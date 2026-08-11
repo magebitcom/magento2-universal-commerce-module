@@ -110,4 +110,11 @@
     <preference for="Magebit\UcpSpec\Api\Shopping\DiscountResponseDiscountsObjectInterface" type="Magebit\UcpSpec\Data\Shopping\DiscountResponseDiscountsObject" />
     <preference for="Magebit\UcpSpec\Api\Shopping\DiscountResponseAppliedDiscountInterface" type="Magebit\UcpSpec\Data\Shopping\DiscountResponseAppliedDiscount" />
     <preference for="Magebit\UcpSpec\Api\Shopping\DiscountResponseAllocationInterface" type="Magebit\UcpSpec\Data\Shopping\DiscountResponseAllocation" />
+    <type name="Magento\Framework\Console\CommandList">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="SeedUcpConformance" xsi:type="object">Magebit\UniversalCommerce\Console\Command\SeedConformance</item>
+            </argument>
+        </arguments>
+    </type>
 </config>
