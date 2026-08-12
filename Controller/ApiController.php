@@ -23,8 +23,11 @@ use Magento\Framework\DataObject;
 use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
 use Magebit\UniversalCommerce\Model\Validation\ValidationResult;
 use Magebit\UniversalCommerce\Model\RequestClassBuilder;
+use Magebit\UcpSpec\Api\Shopping\Types\ErrorResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageErrorInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageErrorInterfaceFactory;
+use Magebit\UcpSpec\Api\UcpErrorInterface;
+use Magebit\UniversalCommerce\Api\UniversalCommerceProtocolInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
 use Magento\Framework\App\Request\Http;
 use Magento\Framework\Exception\LocalizedException;
@@ -34,11 +37,6 @@ use Psr\Log\LoggerInterface;
 
 abstract class ApiController implements ActionInterface, CsrfAwareActionInterface
 {
-    /**
-     * Envelope status for a transport-tier failure, as opposed to a business outcome reported at 200.
-     */
-    public const STATUS_REQUIRES_ESCALATION = 'requires_escalation';
-
     /**
      * Trace header the spec marks required on every request, and which responses echo back.
      */
@@ -80,13 +78,11 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
             return $callback();
         } catch (UcpException $e) {
             return $this->makeErrorResponse(
-                $e->getType(),
-                [$this->errorMessage($e->getTypeCode(), $e->getMessage())],
+                [$this->errorMessage($e->getErrorCode(), $e->getMessage())],
                 $e->getStatusCode()
             );
         } catch (LocalizedException $e) {
             return $this->makeErrorResponse(
-                self::STATUS_REQUIRES_ESCALATION,
                 [$this->errorMessage('invalid_request', $e->getMessage())],
                 500
             );
@@ -94,7 +90,6 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
             $this->logger->error($e->getMessage(), ['exception' => $e]);
 
             return $this->makeErrorResponse(
-                self::STATUS_REQUIRES_ESCALATION,
                 [$this->errorMessage('server_error', 'An unexpected error occurred.')],
                 500
             );
@@ -138,7 +133,6 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
             }
         } catch (LocalizedException $e) {
             return $this->makeErrorResponse(
-                self::STATUS_REQUIRES_ESCALATION,
                 [$this->errorMessage('invalid_request', $e->getMessage())],
                 400
             );
@@ -162,11 +156,11 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
                 'validation_error',
                 (string)$content,
                 MessageErrorInterface::SEVERITY_REQUIRES_BUYER_INPUT,
-                $path === '' ? null : (string)$path
+                $path === '' ? null : $this->jsonPath((string)$path)
             );
         }
 
-        return $this->makeErrorResponse(self::STATUS_REQUIRES_ESCALATION, $messages, 400);
+        return $this->makeErrorResponse($messages, 400);
     }
 
     /**
@@ -184,7 +178,6 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
 
             throw new UcpException(
                 __('The %1 header is required.', self::HEADER_REQUEST_ID),
-                self::STATUS_REQUIRES_ESCALATION,
                 'invalid_request',
                 400
             );
@@ -193,11 +186,36 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
         if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $requestId) !== 1) {
             throw new UcpException(
                 __('The %1 header must be a UUID.', self::HEADER_REQUEST_ID),
-                self::STATUS_REQUIRES_ESCALATION,
                 'invalid_request',
                 400
             );
         }
+    }
+
+    /**
+     * The validator reports dot-notation paths; `message.path` is an RFC 9535 JSONPath, which roots at
+     * `$` and brackets array positions.
+     *
+     * @param string $dotted
+     * @return string
+     */
+    public function jsonPath(string $dotted): string
+    {
+        return '$.' . preg_replace('/\.(\d+)(?=\.|$)/', '[$1]', $dotted);
+    }
+
+    /**
+     * Every session-scoped action needs the identifier the router captured, and reports its absence
+     * identically. Kept here so the four of them cannot drift into four different message shapes.
+     *
+     * @return ResultJson
+     */
+    protected function missingCheckoutId(): ResultJson
+    {
+        return $this->makeErrorResponse(
+            [$this->errorMessage('invalid_request', 'A checkout session identifier is required.')],
+            400
+        );
     }
 
     /**
@@ -231,18 +249,22 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
     }
 
     /**
-     * Make error response
+     * The envelope is `types/error_response.json`, which forbids additional properties: the status
+     * belongs to the UCP metadata, and the per-message severity says what the platform may do next.
+     * Keyed off the generated constants so a schema rename fails the build rather than the wire.
      *
-     * @param string $status
      * @param array<MessageErrorInterface> $messages
      * @param int $statusCode
      * @return ResultJson
      */
-    public function makeErrorResponse(string $status, array $messages, int $statusCode = 400): ResultJson
+    public function makeErrorResponse(array $messages, int $statusCode = 400): ResultJson
     {
         return $this->makeJsonResponse([
-            'status' => $status,
-            'messages' => $messages
+            ErrorResponseInterface::KEY_UCP => [
+                UcpErrorInterface::KEY_VERSION => UniversalCommerceProtocolInterface::SPEC_VERSION,
+                UcpErrorInterface::KEY_STATUS => UcpErrorInterface::STATUS_ERROR,
+            ],
+            ErrorResponseInterface::KEY_MESSAGES => $messages,
         ], $statusCode);
     }
 

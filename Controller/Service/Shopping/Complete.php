@@ -63,13 +63,7 @@ class Complete extends ApiController
         $checkoutId = $this->getHttpRequest()->getParam('checkout_id');
 
         if (!$checkoutId) {
-            return $this->makeErrorResponse('requires_escalation', [
-                $this->messageFactory->create(['data' => [
-                    'type' => 'error',
-                    'code' => 'invalid_request',
-                    'message' => 'Checkout ID is required',
-                ]])
-            ], 400);
+            return $this->missingCheckoutId();
         }
 
         // The body is {"payment": {...}} — the payment object is nested, not the root.

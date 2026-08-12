@@ -99,7 +99,6 @@ class RestHandler implements RestHandlerInterface
         if (!$cart->getIsActive()) {
             throw new UcpException(
                 __('Checkout session is already canceled: %1.', $checkoutId),
-                'error',
                 'checkout_already_canceled',
                 400
             );
@@ -177,7 +176,6 @@ class RestHandler implements RestHandlerInterface
         } catch (NoSuchEntityException $e) {
             throw new UcpException(
                 __('Checkout session not found: %1. Please create a new checkout session.', $maskedCartId),
-                'not_found',
                 'session_not_found',
                 404
             );

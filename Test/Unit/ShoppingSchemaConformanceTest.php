@@ -23,6 +23,7 @@ class ShoppingSchemaConformanceTest extends TestCase
     use SchemaAssert;
 
     private const CHECKOUT_SCHEMA = 'shopping/checkout_resp.json';
+    private const ERROR_SCHEMA = 'shopping/types/error_response.json';
 
     /**
      * @return array<string, array{0: string}>
@@ -67,6 +68,40 @@ class ShoppingSchemaConformanceTest extends TestCase
             self::loadFixtureObject('shopping.checkout_session.complete.200.json'),
             self::CHECKOUT_SCHEMA
         );
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function errorFixtureProvider(): array
+    {
+        return [
+            'unknown session 404' => ['shopping.checkout_session.get.404.json'],
+            'invalid body 400' => ['shopping.checkout_session.create.400.json'],
+        ];
+    }
+
+    /**
+     * The error envelope forbids additional properties, so a captured failure is the only thing that
+     * proves the boundary is not still sending its own invented fields.
+     *
+     * @dataProvider errorFixtureProvider
+     * @param string $fixture
+     * @return void
+     */
+    public function testErrorResponseMatchesSpec(string $fixture): void
+    {
+        $this->assertMatchesSchema(self::loadFixtureObject($fixture), self::ERROR_SCHEMA);
+    }
+
+    /**
+     * @return void
+     */
+    public function testAValidationErrorPointsAtTheOffendingFieldAsAJsonPath(): void
+    {
+        $payload = self::loadFixture('shopping.checkout_session.create.400.json');
+
+        $this->assertSame('$.line_items', $payload['messages'][0]['path']);
     }
 
     /**

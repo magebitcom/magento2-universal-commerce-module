@@ -14,8 +14,11 @@ namespace Magebit\UniversalCommerce\Test\Unit\Controller;
 
 use Magebit\UcpSpec\Api\Shopping\Types\MessageErrorInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageErrorInterfaceFactory;
+use Magebit\UcpSpec\Api\UcpErrorInterface;
 use Magebit\UcpSpec\Data\Shopping\Types\MessageError;
+use Magebit\UniversalCommerce\Api\UniversalCommerceProtocolInterface;
 use Magebit\UniversalCommerce\Controller\ApiController;
+use Magebit\UniversalCommerce\Test\Unit\SchemaAssert;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
 use Magebit\UniversalCommerce\Model\RequestClassBuilder;
@@ -28,6 +31,8 @@ use Psr\Log\LoggerInterface;
 
 class ApiControllerTest extends TestCase
 {
+    use SchemaAssert;
+
     private const UUID = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
 
     /**
@@ -90,6 +95,44 @@ class ApiControllerTest extends TestCase
         $this->assertSame(MessageErrorInterface::TYPE_ERROR, $message->getType());
         $this->assertNotSame('', $message->getContent());
         $this->assertSame(MessageErrorInterface::SEVERITY_RECOVERABLE, $message->getSeverity());
+    }
+
+    /**
+     * The envelope is `types/error_response.json`, which 2026-04-08 introduced and which forbids
+     * additional properties — so the invented top-level `status` this module used to send is now a
+     * violation rather than a harmless extra.
+     *
+     * @return void
+     */
+    public function testTheErrorEnvelopeMatchesTheSpecSchema(): void
+    {
+        $result = $this->controller(null)->errorBoundary(fn (): ResultJson => $this->fail('reached'));
+
+        $this->assertMatchesSchema($this->encoded($result), 'shopping/types/error_response.json');
+    }
+
+    /**
+     * @return void
+     */
+    public function testTheEnvelopeReportsErrorStatusInsideUcpMetadata(): void
+    {
+        $payload = $this->encoded($this->controller(null)->errorBoundary(fn (): ResultJson => $this->fail('reached')));
+
+        $this->assertFalse(property_exists($payload, 'status'));
+        $this->assertSame(UcpErrorInterface::STATUS_ERROR, $payload->ucp->status);
+        $this->assertSame(UniversalCommerceProtocolInterface::SPEC_VERSION, $payload->ucp->version);
+    }
+
+    /**
+     * @param ResultJson $result
+     * @return object The payload as an agent would receive it, so nothing hides behind PHP objects
+     */
+    private function encoded(ResultJson $result): object
+    {
+        /** @var object $decoded */
+        $decoded = json_decode((string) json_encode($result->getData()), false, 512, JSON_THROW_ON_ERROR);
+
+        return $decoded;
     }
 
     /**

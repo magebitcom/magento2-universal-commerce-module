@@ -60,13 +60,7 @@ class Get extends ApiController
         $checkoutId = $this->getHttpRequest()->getParam('checkout_id');
 
         if (!$checkoutId) {
-            return $this->makeErrorResponse('requires_escalation', [
-                $this->messageFactory->create(['data' => [
-                    'type' => 'error',
-                    'code' => 'invalid_request',
-                    'message' => 'Checkout ID is required',
-                ]])
-            ], 400);
+            return $this->missingCheckoutId();
         }
 
         if ($idempotencyResponse = $this->handleIdempotency()) {

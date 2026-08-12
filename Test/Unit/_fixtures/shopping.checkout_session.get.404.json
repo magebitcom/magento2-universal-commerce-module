@@ -1,0 +1,14 @@
+{
+    "ucp": {
+        "version": "2026-04-08",
+        "status": "error"
+    },
+    "messages": [
+        {
+            "type": "error",
+            "code": "session_not_found",
+            "content": "Checkout session not found: does-not-exist. Please create a new checkout session.",
+            "severity": "recoverable"
+        }
+    ]
+}
