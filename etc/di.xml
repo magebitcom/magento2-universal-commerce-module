@@ -34,14 +34,14 @@
     <type name="Magebit\UniversalCommerce\Model\Service\Shopping\Converter\QuoteToTotalsResponse">
         <arguments>
             <argument name="typeMapping" xsi:type="array">
-                <item name="subtotal" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_SUBTOTAL</item>
-                <item name="discount" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_DISCOUNT</item>
-                <item name="items_discount" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_ITEMS_DISCOUNT</item>
-                <item name="shipping_discount" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_DISCOUNT</item>
-                <item name="fee" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_FEE</item>
-                <item name="shipping" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_FULFILLMENT</item>
-                <item name="tax" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_TAX</item>
-                <item name="grand_total" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_TOTAL</item>
+                <item name="subtotal" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_SUBTOTAL</item>
+                <item name="discount" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_DISCOUNT</item>
+                <item name="items_discount" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_ITEMS_DISCOUNT</item>
+                <item name="shipping_discount" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_DISCOUNT</item>
+                <item name="fee" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_FEE</item>
+                <item name="shipping" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_FULFILLMENT</item>
+                <item name="tax" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_TAX</item>
+                <item name="grand_total" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_TOTAL</item>
             </argument>
         </arguments>
     </type>
