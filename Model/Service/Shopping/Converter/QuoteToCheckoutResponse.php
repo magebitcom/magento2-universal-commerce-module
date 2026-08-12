@@ -38,6 +38,8 @@ use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UcpSpec\Api\Shopping\Types\OrderConfirmationInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\OrderConfirmationInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\LinkInterfaceFactory;
+use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
+use Magebit\UniversalCommerce\Model\IdempotencyHandler;
 use Magebit\AgenticCore\Model\Checkout\CheckoutState;
 use Magebit\AgenticCore\Model\Checkout\StateResolver;
 use Magento\Sales\Api\OrderRepositoryInterface;
@@ -62,6 +64,7 @@ class QuoteToCheckoutResponse
      * @param LinkInterfaceFactory $linkFactory
      * @param Config $config
      * @param StateResolver $stateResolver
+     * @param OrderLinkRepositoryInterface $orderLinkRepository
      */
     public function __construct(
         protected readonly CheckoutResponseInterfaceFactory $checkoutResponseFactory,
@@ -79,7 +82,8 @@ class QuoteToCheckoutResponse
         protected readonly OrderRepositoryInterface $orderRepository,
         protected readonly LinkInterfaceFactory $linkFactory,
         protected readonly Config $config,
-        protected readonly StateResolver $stateResolver
+        protected readonly StateResolver $stateResolver,
+        protected readonly OrderLinkRepositoryInterface $orderLinkRepository
     ) {
     }
 
@@ -306,13 +310,11 @@ class QuoteToCheckoutResponse
      */
     protected function getOrder(string $checkoutId): ?OrderConfirmationInterface
     {
-        try {
-            $orderId = $this->checkoutMetaRepository->getByCheckoutId($checkoutId)->getOrderId();
-        } catch (NoSuchEntityException $exception) {
-            return null;
-        }
+        // Read from the shared link rather than the meta row: placement is recorded in one place
+        // for both protocols now, and the meta row keeps only its protocol-specific fields.
+        $orderId = $this->orderLinkRepository->findOrderId(IdempotencyHandler::SCOPE, $checkoutId);
 
-        if (!$orderId) {
+        if ($orderId === null) {
             return null;
         }
 

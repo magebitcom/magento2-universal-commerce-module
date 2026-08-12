@@ -29,7 +29,9 @@ use Magento\Quote\Api\CartRepositoryInterface;
 use Magebit\UniversalCommerce\Api\CheckoutMetaRepositoryInterface;
 use Magebit\UniversalCommerce\Api\Data\CheckoutMetaInterface;
 use Magebit\UniversalCommerce\Api\Data\CheckoutMetaInterfaceFactory;
+use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
 use Magebit\UniversalCommerce\Model\Config;
+use Magebit\UniversalCommerce\Model\IdempotencyHandler;
 use Magento\Quote\Model\Quote;
 
 class RestHandler implements RestHandlerInterface
@@ -43,6 +45,7 @@ class RestHandler implements RestHandlerInterface
      * @param CheckoutMetaRepositoryInterface $checkoutMetaRepository
      * @param CheckoutMetaInterfaceFactory $checkoutMetaFactory
      * @param Config $config
+     * @param OrderLinkRepositoryInterface $orderLinkRepository
      */
     public function __construct(
         protected readonly CheckoutDataProcessor $checkoutDataProcessor,
@@ -52,7 +55,8 @@ class RestHandler implements RestHandlerInterface
         protected readonly CartRepositoryInterface $cartRepository,
         protected readonly CheckoutMetaRepositoryInterface $checkoutMetaRepository,
         protected readonly CheckoutMetaInterfaceFactory $checkoutMetaFactory,
-        protected readonly Config $config
+        protected readonly Config $config,
+        protected readonly OrderLinkRepositoryInterface $orderLinkRepository
     ) {
     }
 
@@ -257,5 +261,14 @@ class RestHandler implements RestHandlerInterface
 
         $meta->setOrderId($orderId);
         $this->checkoutMetaRepository->save($meta);
+
+        // The shared link is what status resolution reads; the meta row keeps the protocol-specific
+        // fields and its own order_id stays written until the contract release drops it.
+        $this->orderLinkRepository->link(
+            IdempotencyHandler::SCOPE,
+            $checkoutId,
+            (int) $meta->getQuoteId(),
+            $orderId
+        );
     }
 }
