@@ -1,10 +1,10 @@
 {
     "ucp": {
-        "version": "2026-01-23",
+        "version": "2026-04-08",
         "services": {
             "dev.ucp.shopping": [
                 {
-                    "version": "2026-01-23",
+                    "version": "2026-04-08",
                     "spec": "https://ucp.dev/specs/shopping",
                     "schema": "https://ucp.dev/services/shopping/openapi.json",
                     "transport": "rest",
@@ -15,17 +15,24 @@
         "capabilities": {
             "dev.ucp.shopping.checkout": [
                 {
-                    "version": "2026-01-23",
+                    "version": "2026-04-08",
                     "spec": "https://ucp.dev/specs/shopping/checkout",
                     "schema": "https://ucp.dev/schemas/shopping/checkout.json"
                 }
             ],
             "dev.ucp.shopping.discount": [
                 {
-                    "version": "2026-01-23",
+                    "version": "2026-04-08",
                     "spec": "https://ucp.dev/specification/discount",
                     "schema": "https://ucp.dev/schemas/shopping/discount.json",
                     "extends": "dev.ucp.shopping.checkout"
+                }
+            ],
+            "dev.ucp.shopping.order": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/order",
+                    "schema": "https://ucp.dev/schemas/shopping/order.json"
                 }
             ]
         },

@@ -18,12 +18,14 @@
     <!-- Shopping service -->
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\RestHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\RestHandler" />
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\QuoteValidatorInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\Validation\QuoteValidationComposite" />
+    <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\OrderHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\OrderHandler" />
 
     <type name="Magebit\UniversalCommerce\Model\Service\Shopping\ShoppingService">
         <arguments>
             <argument name="capabilities" xsi:type="array">
                 <item name="dev.ucp.shopping.checkout" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CheckoutCapability</item>
                 <item name="dev.ucp.shopping.discount" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\DiscountCapability</item>
+                <item name="dev.ucp.shopping.order" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\OrderCapability</item>
             </argument>
         </arguments>
     </type>
@@ -62,6 +64,19 @@
     <!-- Carries the agent's own webhook URL. Unbound until the profile parser gained a caller, because
          nothing had ever built one. -->
     <preference for="Magebit\UcpSpec\Api\Shopping\OrderResponsePlatformSchemaInterface" type="Magebit\UcpSpec\Data\Shopping\OrderResponsePlatformSchema" />
+    <preference for="Magebit\UcpSpec\Api\UcpResponseOrderSchemaInterface" type="Magebit\UcpSpec\Data\UcpResponseOrderSchema" />
+
+    <!-- Shopping - Order -->
+    <preference for="Magebit\UcpSpec\Api\Shopping\OrderResponseInterface" type="Magebit\UcpSpec\Data\Shopping\OrderResponse" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\OrderResponseFulfillmentInterface" type="Magebit\UcpSpec\Data\Shopping\OrderResponseFulfillment" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\OrderLineItemInterface" type="Magebit\UcpSpec\Data\Shopping\Types\OrderLineItem" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\OrderLineItemQuantityInterface" type="Magebit\UcpSpec\Data\Shopping\Types\OrderLineItemQuantity" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\ExpectationInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Expectation" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\ExpectationLineItemsItemInterface" type="Magebit\UcpSpec\Data\Shopping\Types\ExpectationLineItemsItem" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\FulfillmentEventInterface" type="Magebit\UcpSpec\Data\Shopping\Types\FulfillmentEvent" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\FulfillmentEventLineItemsItemInterface" type="Magebit\UcpSpec\Data\Shopping\Types\FulfillmentEventLineItemsItem" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\AdjustmentInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Adjustment" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\AdjustmentLineItemsItemInterface" type="Magebit\UcpSpec\Data\Shopping\Types\AdjustmentLineItemsItem" />
 
     <!-- The shared delivery queue, bound to this protocol's headers. A virtual type rather than a
          preference because the other module delivers with an entirely different header set. -->

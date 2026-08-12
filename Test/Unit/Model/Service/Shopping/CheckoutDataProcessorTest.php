@@ -21,6 +21,7 @@ use Magebit\UcpSpec\Api\Shopping\Types\LineItemCreateRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
 use Magebit\AgenticCore\Model\Quote\AddressWriter;
+use Magebit\AgenticCore\Model\Quote\RegionResolver;
 use Magebit\AgenticCore\Model\Quote\LineItemOutcome;
 use Magebit\AgenticCore\Model\Quote\LineItemResult;
 use Magebit\AgenticCore\Model\Quote\LineItemWriter;
@@ -89,7 +90,7 @@ class CheckoutDataProcessorTest extends TestCase
 
         $this->processor = new CheckoutDataProcessor(
             $this->lineItemWriter,
-            new AddressWriter(),
+            new AddressWriter($this->createMock(RegionResolver::class)),
             new PersonalInformationCopier(),
             $this->shippingMethodWriter,
             $this->createMock(GuestCouponManagementInterface::class),

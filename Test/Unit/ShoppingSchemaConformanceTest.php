@@ -24,6 +24,8 @@ class ShoppingSchemaConformanceTest extends TestCase
 
     private const CHECKOUT_SCHEMA = 'shopping/checkout_resp.json';
     private const ERROR_SCHEMA = 'shopping/types/error_response.json';
+    private const ORDER_SCHEMA = 'shopping/order_resp.json';
+    private const ORDER_FIXTURE = 'shopping.order.get.200.json';
 
     /**
      * @return array<string, array{0: string}>
@@ -68,6 +70,49 @@ class ShoppingSchemaConformanceTest extends TestCase
             self::loadFixtureObject('shopping.checkout_session.complete.200.json'),
             self::CHECKOUT_SCHEMA
         );
+    }
+
+    /**
+     * @return void
+     */
+    public function testOrderResponseMatchesSpec(): void
+    {
+        $this->assertMatchesSchema(self::loadFixtureObject(self::ORDER_FIXTURE), self::ORDER_SCHEMA);
+    }
+
+    /**
+     * The order is the continuation of a session the agent already holds, so it has to name that
+     * session and keep the line item identifiers the checkout gave it.
+     *
+     * @return void
+     */
+    public function testTheOrderReconcilesWithTheCheckoutThatProducedIt(): void
+    {
+        $checkout = self::loadFixture('shopping.checkout_session.complete.200.json');
+        $order = self::loadFixture(self::ORDER_FIXTURE);
+
+        $this->assertSame($checkout['id'], $order['checkout_id']);
+        $this->assertSame($checkout['order']['id'], $order['id']);
+        $this->assertSame($checkout['order']['permalink_url'], $order['permalink_url']);
+        $this->assertSame(
+            array_column($checkout['line_items'], 'id'),
+            array_column($order['line_items'], 'id')
+        );
+    }
+
+    /**
+     * An order nothing has shipped for still tells the agent what to expect, and says the log is empty
+     * rather than leaving it out.
+     *
+     * @return void
+     */
+    public function testAnUnshippedOrderReportsExpectationsAndAnEmptyEventLog(): void
+    {
+        $order = self::loadFixture(self::ORDER_FIXTURE);
+
+        $this->assertNotEmpty($order['fulfillment']['expectations']);
+        $this->assertSame([], $order['fulfillment']['events']);
+        $this->assertSame('processing', $order['line_items'][0]['status']);
     }
 
     /**
