@@ -21,6 +21,7 @@ class Config
     private const XML_PATH_PAYMENT_METHOD = 'universal_commerce/checkout/payment_method';
     private const XML_PATH_LINKS = 'universal_commerce/links';
     private const XML_PATH_REQUIRE_REQUEST_ID = 'universal_commerce/api/require_request_id';
+    private const XML_PATH_WEBHOOKS_ENABLED = 'universal_commerce/webhooks/enabled';
 
     /**
      * Quote lifetime in days, which is what a checkout session's expiry is derived from.
@@ -51,6 +52,23 @@ class Config
     /**
      * Get API base URL from configuration
      *
+     * @param int|null $storeId
+     * @return string
+     */
+    /**
+     * @param int|null $storeId
+     * @return bool
+     */
+    public function areWebhooksEnabled(?int $storeId = null): bool
+    {
+        return $this->scopeConfig->isSetFlag(
+            self::XML_PATH_WEBHOOKS_ENABLED,
+            ScopeInterface::SCOPE_STORE,
+            $storeId
+        );
+    }
+
+    /**
      * @param int|null $storeId
      * @return string
      */

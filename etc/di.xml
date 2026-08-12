@@ -63,6 +63,20 @@
          nothing had ever built one. -->
     <preference for="Magebit\UcpSpec\Api\Shopping\OrderResponsePlatformSchemaInterface" type="Magebit\UcpSpec\Data\Shopping\OrderResponsePlatformSchema" />
 
+    <!-- The shared delivery queue, bound to this protocol's headers. A virtual type rather than a
+         preference because the other module delivers with an entirely different header set. -->
+    <virtualType name="Magebit\UniversalCommerce\Model\Webhook\Dispatcher" type="Magebit\AgenticCore\Model\Webhook\Dispatcher">
+        <arguments>
+            <argument name="headersProvider" xsi:type="object">Magebit\UniversalCommerce\Model\Webhook\DeliveryHeadersProvider</argument>
+        </arguments>
+    </virtualType>
+
+    <type name="Magebit\UniversalCommerce\Cron\DispatchWebhooks">
+        <arguments>
+            <argument name="dispatcher" xsi:type="object">Magebit\UniversalCommerce\Model\Webhook\Dispatcher</argument>
+        </arguments>
+    </type>
+
     <!-- Services -->
     <preference for="Magebit\UcpSpec\Api\ServiceBusinessSchemaInterface" type="Magebit\UcpSpec\Data\ServiceBusinessSchema" />
 
