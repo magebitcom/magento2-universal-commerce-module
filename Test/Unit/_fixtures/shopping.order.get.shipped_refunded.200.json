@@ -41,8 +41,8 @@
             },
             "quantity": {
                 "original": 2,
-                "total": 2,
-                "fulfilled": 0
+                "total": 1,
+                "fulfilled": 1
             },
             "totals": [
                 {
@@ -56,7 +56,7 @@
                     "amount": 4000
                 }
             ],
-            "status": "processing"
+            "status": "fulfilled"
         }
     ],
     "fulfillment": {
@@ -83,7 +83,22 @@
                 "description": "Flat Rate - Fixed"
             }
         ],
-        "events": []
+        "events": [
+            {
+                "id": "id-9ab87912",
+                "occurred_at": "2026-01-01T00:00:00+00:00",
+                "type": "shipped",
+                "line_items": [
+                    {
+                        "id": "id-e5b861a6",
+                        "quantity": 2
+                    }
+                ],
+                "tracking_number": "1Z999AA10123456784",
+                "carrier": "Federal Express",
+                "tracking_url": "https://merchant.example/shipping/tracking/popup?hash=nonce-placeholder"
+            }
+        ]
     },
     "currency": "USD",
     "totals": [
@@ -101,6 +116,27 @@
             "type": "total",
             "display_text": "Grand Total",
             "amount": 5000
+        }
+    ],
+    "adjustments": [
+        {
+            "id": "id-833e9eac",
+            "type": "refund",
+            "occurred_at": "2026-01-01T00:00:00+00:00",
+            "status": "completed",
+            "line_items": [
+                {
+                    "id": "id-e5b861a6",
+                    "quantity": -1
+                }
+            ],
+            "totals": [
+                {
+                    "type": "total",
+                    "display_text": "Refund",
+                    "amount": -3000
+                }
+            ]
         }
     ]
 }

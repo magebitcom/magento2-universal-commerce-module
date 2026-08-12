@@ -39,14 +39,18 @@ class FixtureScrubber
     /**
      * Placeholders are chosen so re-running the scrubber is a no-op, and so that no placeholder
      * itself looks like the machine-specific value it replaced (e.g. the cache hash is not hex).
-     *
-     * @var array<int, array{0: string, 1: string}>
      */
     private const ENTITY_ID = '1000';
+
+    /**
+     * @var array<int, array{0: string, 1: string}>
+     */
 
     private const PATTERNS = [
         // Media cache hash: rotates whenever image config changes.
         ['~/media/catalog/product/cache/[0-9a-f]{32}/~', '/media/catalog/product/cache/' . self::CACHE_HASH . '/'],
+        // Shipment tracking URL hash: derived from the local shipment row.
+        ['~([?&]hash)=[A-Za-z0-9+/=_-]+~', '$1=' . self::NONCE],
         // Static content deploy version: changes on every setup:static-content:deploy.
         ['~/static/version\d+/~', '/static/' . self::STATIC_VERSION . '/'],
         // ISO-8601 / RFC 3339 timestamps.
@@ -58,7 +62,11 @@ class FixtureScrubber
     /**
      * @var int
      */
-    private int $sequence = 0;
+    /**
+     * Prefix marking a scrubbed id. It is not numeric, so a second pass leaves it alone and a placeholder
+     * can never be mistaken for the row id it replaced.
+     */
+    public const ID_PREFIX = 'id-';
 
     /**
      * Returns a copy of the payload with every environment-derived value replaced.
@@ -72,8 +80,6 @@ class FixtureScrubber
      */
     public function scrub(array|object $payload): array|object
     {
-        $this->sequence = 0;
-
         return $this->scrubNode($payload);
     }
 
@@ -90,10 +96,7 @@ class FixtureScrubber
                 $result->$key = $this->scrubMember($key, $value);
             }
 
-            /** @var array<string, mixed> $scrubbed */
-            $scrubbed = $this->scrubGeneratedId((array) $result);
-
-            return (object) $scrubbed;
+            return $result;
         }
 
         if (is_array($node)) {
@@ -103,7 +106,7 @@ class FixtureScrubber
                 $result[$key] = $this->scrubMember((string) $key, $value);
             }
 
-            return $this->scrubGeneratedId($result);
+            return $result;
         }
 
         return $node;
@@ -116,6 +119,14 @@ class FixtureScrubber
      */
     private function scrubMember(string $key, mixed $value): mixed
     {
+        // A list of bare id strings references the same rows the ids do, so it is mapped the same way.
+        if (is_array($value) && str_ends_with($key, '_ids')) {
+            return array_map(
+                fn (mixed $item): mixed => is_string($item) ? $this->scrubId($item) : $this->scrubMember($key, $item),
+                $value
+            );
+        }
+
         return match (true) {
             is_array($value), is_object($value) => $this->scrubNode($value),
             is_string($value) => $this->scrubValue($key, $value),
@@ -137,6 +148,10 @@ class FixtureScrubber
         // Opaque 32-char tokens are generated checkout session ids.
         if (preg_match('~^[A-Za-z0-9]{32}$~', $value) === 1) {
             return self::SESSION_ID;
+        }
+
+        if ($key === 'id' || str_ends_with($key, '_id')) {
+            return $this->scrubId($value);
         }
 
         $value = $this->scrubOrigin($value);
@@ -168,17 +183,20 @@ class FixtureScrubber
     }
 
     /**
-     * Auto-increment database ids (quote items) become stable sequential placeholders.
+     * A database id becomes a placeholder derived from the id itself rather than from its position, so
+     * that every reference to it — in the same fixture or in another captured from the same run — scrubs
+     * to the same value. Anything not purely numeric, a SKU or a reverse-domain handler name, is left
+     * alone.
      *
-     * @param array<mixed> $node
-     * @return array<mixed>
+     * @param string $value
+     * @return string
      */
-    private function scrubGeneratedId(array $node): array
+    private function scrubId(string $value): string
     {
-        if (isset($node['id']) && is_string($node['id']) && preg_match('~^\d+$~', $node['id']) === 1) {
-            $node['id'] = (string) (1000 + ++$this->sequence);
+        if (preg_match('~^\d+$~', $value) !== 1) {
+            return $value;
         }
 
-        return $node;
+        return self::ID_PREFIX . substr(hash('sha256', $value), 0, 8);
     }
 }

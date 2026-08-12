@@ -75,12 +75,77 @@ class FixtureScrubberTest extends TestCase
         $this->assertSame(FixtureScrubber::SESSION_ID, $result['id']);
     }
 
-    public function testNumbersQuoteItemIdsSequentially(): void
+    /**
+     * Derived from the id rather than from its position, so a fixture captured later in the same run
+     * still agrees with this one about which row is which.
+     */
+    public function testReplacesDatabaseIdsWithAPlaceholderDerivedFromTheId(): void
     {
         $result = $this->scrubber->scrub(['line_items' => [['id' => '18'], ['id' => '4271']]]);
+        $first = $result['line_items'][0]['id'];
+        $second = $result['line_items'][1]['id'];
 
-        $this->assertSame('1001', $result['line_items'][0]['id']);
-        $this->assertSame('1002', $result['line_items'][1]['id']);
+        $this->assertStringStartsWith(FixtureScrubber::ID_PREFIX, $first);
+        $this->assertNotSame($first, $second);
+        $this->assertSame($first, (new FixtureScrubber())->scrub(['id' => '18'])['id']);
+    }
+
+    /**
+     * The order schema references line items by id from expectations, events and adjustments. Scrubbing
+     * each occurrence independently produced a fixture whose references pointed at nothing, so the
+     * suite validated payloads the module could never emit.
+     */
+    public function testTheSameIdScrubsToTheSamePlaceholderEverywhere(): void
+    {
+        $result = $this->scrubber->scrub([
+            'line_items' => [['id' => '110'], ['id' => '111']],
+            'fulfillment' => [
+                'expectations' => [['line_items' => [['id' => '110', 'quantity' => 2]]]],
+            ],
+            'adjustments' => [['line_items' => [['id' => '111', 'quantity' => -1]]]],
+        ]);
+
+        $this->assertSame(
+            $result['line_items'][0]['id'],
+            $result['fulfillment']['expectations'][0]['line_items'][0]['id']
+        );
+        $this->assertSame(
+            $result['line_items'][1]['id'],
+            $result['adjustments'][0]['line_items'][0]['id']
+        );
+        $this->assertNotSame($result['line_items'][0]['id'], $result['line_items'][1]['id']);
+    }
+
+    /**
+     * The checkout response references its line items through a list of bare id strings, which kept the
+     * real database ids while the line items themselves were renumbered.
+     */
+    public function testIdListsAreScrubbedToMatchTheItemsTheyReference(): void
+    {
+        $result = $this->scrubber->scrub([
+            'line_items' => [['id' => '110']],
+            'fulfillment' => [
+                'methods' => [['line_item_ids' => ['110'], 'selected_destination_id' => '170']],
+            ],
+        ]);
+
+        $this->assertSame(
+            [$result['line_items'][0]['id']],
+            $result['fulfillment']['methods'][0]['line_item_ids']
+        );
+        $this->assertNotSame('170', $result['fulfillment']['methods'][0]['selected_destination_id']);
+    }
+
+    /**
+     * The shipment tracking URL carries a hash of the local shipment row.
+     */
+    public function testReplacesTheTrackingUrlHash(): void
+    {
+        $result = $this->scrubber->scrub([
+            'tracking_url' => 'https://shop.local/shipping/tracking/popup?hash=c2hpcF9pZDozOmNlNmMwM2M',
+        ]);
+
+        $this->assertStringNotContainsString('c2hpcF9pZDozOmNlNmMwM2M', $result['tracking_url']);
     }
 
     public function testLeavesSkuLikeIdsAlone(): void

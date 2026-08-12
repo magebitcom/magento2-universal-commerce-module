@@ -97,12 +97,17 @@ class OrderItemToOrderLineItem
     {
         $ordered = (float) $orderItem->getQtyOrdered();
         $removed = (float) $orderItem->getQtyCanceled() + (float) $orderItem->getQtyRefunded();
+        $total = max(0.0, $ordered - $removed);
+
+        // Capped at what is still active: Magento keeps the shipped quantity after a return, and
+        // reporting more fulfilled than remains would read as a quantity that is both gone and in hand.
+        $fulfilled = min($total, $this->fulfilledQty($orderItem));
 
         /** @var OrderLineItemQuantityInterface $quantity */
         $quantity = $this->quantityFactory->create();
         $quantity->setOriginal((int) round($ordered));
-        $quantity->setTotal((int) round(max(0.0, $ordered - $removed)));
-        $quantity->setFulfilled((int) round($this->fulfilledQty($orderItem)));
+        $quantity->setTotal((int) round($total));
+        $quantity->setFulfilled((int) round($fulfilled));
 
         return $quantity;
     }

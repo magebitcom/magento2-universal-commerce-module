@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Test\Unit\Model\Service\Shopping\Converter;
 
+use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentDestinationResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentDestinationResponseInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentGroupResponseInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentMethodResponseInterface;
@@ -109,12 +110,70 @@ class QuoteToFulfillmentResponseTest extends TestCase
     public function testSubmittedSelectionsWinOverTheQuoteState(): void
     {
         $methods = $this->converter->getMethods($this->address(), ['1'], [
+            'destinations' => [['id' => 'agent_destination']],
             'selected_destination_id' => 'agent_destination',
             'groups' => [['id' => 'g1', 'selected_option_id' => 'flatrate_flatrate']],
         ]);
 
         $this->assertSame('agent_destination', $methods[0]->getSelectedDestinationId());
         $this->assertSame('flatrate_flatrate', $methods[0]->getGroups()[0]->getSelectedOptionId());
+    }
+
+    /**
+     * There is one address on the quote, so a selection naming something the agent never described has
+     * nothing to point at — the response names the destination it does list rather than echoing a
+     * reference that resolves to nothing.
+     *
+     * @return void
+     */
+    public function testASelectionNamingAnUnlistedDestinationIsNotEchoed(): void
+    {
+        $methods = $this->converter->getMethods($this->address(), ['1'], [
+            'selected_destination_id' => 'never_submitted',
+        ]);
+
+        $this->assertNotSame('never_submitted', $methods[0]->getSelectedDestinationId());
+        $this->assertSame(
+            $methods[0]->getDestinations()[0]->getId(),
+            $methods[0]->getSelectedDestinationId()
+        );
+    }
+
+    /**
+     * The selection has to name a destination the response lists. Echoing the agent's identifier while
+     * renaming the destination to the quote address id left the reference pointing at nothing.
+     *
+     * @return void
+     */
+    public function testTheSelectedDestinationIsOneOfTheListedDestinations(): void
+    {
+        $methods = $this->converter->getMethods($this->address(), ['1'], [
+            'destinations' => [['id' => 'agent_destination']],
+            'selected_destination_id' => 'agent_destination',
+        ]);
+
+        $this->assertSame(
+            [$methods[0]->getSelectedDestinationId()],
+            array_map(
+                fn (FulfillmentDestinationResponseInterface $destination): string => $destination->getId(),
+                $methods[0]->getDestinations()
+            )
+        );
+    }
+
+    /**
+     * With no identifier submitted, the response invents one and points the selection at it.
+     *
+     * @return void
+     */
+    public function testAnUnnamedDestinationStillMatchesTheSelection(): void
+    {
+        $methods = $this->converter->getMethods($this->address(), ['1']);
+
+        $this->assertSame(
+            $methods[0]->getDestinations()[0]->getId(),
+            $methods[0]->getSelectedDestinationId()
+        );
     }
 
     /**

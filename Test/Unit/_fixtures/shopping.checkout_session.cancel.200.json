@@ -2,7 +2,7 @@
     "id": "checkout_session_placeholder_0001",
     "line_items": [
         {
-            "id": "1001",
+            "id": "id-2ac878b0",
             "quantity": 2,
             "item": {
                 "id": "ucp-conformance-simple",
@@ -91,11 +91,11 @@
                 "id": "shipping",
                 "type": "shipping",
                 "line_item_ids": [
-                    "114"
+                    "id-2ac878b0"
                 ],
                 "destinations": [
                     {
-                        "id": "1002",
+                        "id": "dest-1",
                         "street_address": "1 Infinite Loop",
                         "address_locality": "Cupertino",
                         "address_region": "California",
@@ -111,7 +111,7 @@
                     {
                         "id": "package",
                         "line_item_ids": [
-                            "114"
+                            "id-2ac878b0"
                         ],
                         "options": [
                             {
@@ -147,7 +147,7 @@
             }
         ]
     },
-    "continue_url": "https://merchant.example/ucp/checkout/resume/id/hXhTyVW9M03HrEcmyAIHRl6QXPgogW6z",
+    "continue_url": "https://merchant.example/ucp/checkout/resume/id/WE39gBsQ1TuxilL8olECl2zycUPQaEFk",
     "messages": [],
     "status": "canceled"
 }

@@ -138,6 +138,24 @@ class OrderItemToOrderLineItemTest extends TestCase
     }
 
     /**
+     * Magento keeps the shipped quantity after a return, so the raw figures say three shipped out of one
+     * still active — a quantity both gone and in hand.
+     *
+     * @return void
+     */
+    public function testFulfilledNeverExceedsWhatIsStillActive(): void
+    {
+        $quantity = $this->convert([
+            'qty_ordered' => 3.0,
+            'qty_shipped' => 3.0,
+            'qty_refunded' => 2.0,
+        ])->getQuantity();
+
+        $this->assertSame(1, $quantity->getTotal());
+        $this->assertSame(1, $quantity->getFulfilled());
+    }
+
+    /**
      * Nothing ships for a virtual item, so shipped quantity would leave it forever unfulfilled.
      *
      * @return void

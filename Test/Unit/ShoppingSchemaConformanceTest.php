@@ -26,6 +26,7 @@ class ShoppingSchemaConformanceTest extends TestCase
     private const ERROR_SCHEMA = 'shopping/types/error_response.json';
     private const ORDER_SCHEMA = 'shopping/order_resp.json';
     private const ORDER_FIXTURE = 'shopping.order.get.200.json';
+    private const SHIPPED_ORDER_FIXTURE = 'shopping.order.get.shipped_refunded.200.json';
 
     /**
      * @return array<string, array{0: string}>
@@ -73,11 +74,82 @@ class ShoppingSchemaConformanceTest extends TestCase
     }
 
     /**
+     * @return array<string, array{0: string}>
+     */
+    public static function orderFixtureProvider(): array
+    {
+        return [
+            'placed 200' => [self::ORDER_FIXTURE],
+            'shipped and partly refunded 200' => [self::SHIPPED_ORDER_FIXTURE],
+        ];
+    }
+
+    /**
+     * @dataProvider orderFixtureProvider
+     * @param string $fixture
      * @return void
      */
-    public function testOrderResponseMatchesSpec(): void
+    public function testOrderResponseMatchesSpec(string $fixture): void
     {
-        $this->assertMatchesSchema(self::loadFixtureObject(self::ORDER_FIXTURE), self::ORDER_SCHEMA);
+        $this->assertMatchesSchema(self::loadFixtureObject($fixture), self::ORDER_SCHEMA);
+    }
+
+    /**
+     * Every id an order references has to name a line item the same order lists, or an agent reading the
+     * event log cannot tell which item shipped.
+     *
+     * @dataProvider orderFixtureProvider
+     * @param string $fixture
+     * @return void
+     */
+    public function testEveryReferencedLineItemExists(string $fixture): void
+    {
+        $order = self::loadFixture($fixture);
+        $known = array_column($order['line_items'], 'id');
+
+        foreach ($order['fulfillment']['expectations'] ?? [] as $expectation) {
+            $this->assertSame([], array_diff(array_column($expectation['line_items'], 'id'), $known));
+        }
+
+        foreach ($order['fulfillment']['events'] ?? [] as $event) {
+            $this->assertSame([], array_diff(array_column($event['line_items'], 'id'), $known));
+        }
+
+        foreach ($order['adjustments'] ?? [] as $adjustment) {
+            $this->assertSame([], array_diff(array_column($adjustment['line_items'] ?? [], 'id'), $known));
+        }
+    }
+
+    /**
+     * A shipment is an event with tracking, and a refund is an adjustment that moves money the other
+     * way — both signed so the direction is in the value.
+     *
+     * @return void
+     */
+    public function testAShippedAndRefundedOrderReportsBothLogs(): void
+    {
+        $order = self::loadFixture(self::SHIPPED_ORDER_FIXTURE);
+        $event = $order['fulfillment']['events'][0];
+        $adjustment = $order['adjustments'][0];
+
+        $this->assertSame('shipped', $event['type']);
+        $this->assertNotEmpty($event['tracking_number']);
+        $this->assertSame('refund', $adjustment['type']);
+        $this->assertLessThan(0, $adjustment['totals'][0]['amount']);
+        $this->assertLessThan(0, $adjustment['line_items'][0]['quantity']);
+    }
+
+    /**
+     * A returned quantity cannot still be in the buyer's hands, so what is reported fulfilled never
+     * exceeds what is still on the order.
+     *
+     * @return void
+     */
+    public function testFulfilledQuantityNeverExceedsTheActiveQuantity(): void
+    {
+        foreach (self::loadFixture(self::SHIPPED_ORDER_FIXTURE)['line_items'] as $lineItem) {
+            $this->assertLessThanOrEqual($lineItem['quantity']['total'], $lineItem['quantity']['fulfilled']);
+        }
     }
 
     /**

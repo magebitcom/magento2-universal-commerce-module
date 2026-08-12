@@ -114,12 +114,17 @@ class QuoteToFulfillmentResponse
         );
         $method->setLineItemIds($quoteItemIds);
 
-        $destination = $this->convertAddressToDestination($shippingAddress);
+        // The destination keeps the identifier the agent gave it, so the selection below names something
+        // the response actually lists. Renaming it to the quote address id left the reference dangling.
+        $submittedDestination = $this->firstOf($submittedMethod, 'destinations');
+        $destination = $this->convertAddressToDestination(
+            $shippingAddress,
+            $this->submittedString($submittedDestination, 'id')
+        );
+
         if ($destination) {
             $method->setDestinations([$destination]);
-            $method->setSelectedDestinationId(
-                $this->submittedString($submittedMethod, 'selected_destination_id') ?? $destination->getId()
-            );
+            $method->setSelectedDestinationId($destination->getId());
         }
 
         $group = $this->fulfillmentGroupResponseFactory->create();
@@ -175,10 +180,13 @@ class QuoteToFulfillmentResponse
 
     /**
      * @param Address $address
+     * @param string|null $submittedId Identifier the agent gave this destination, when it named one
      * @return FulfillmentDestinationResponseInterface|null
      */
-    private function convertAddressToDestination(Address $address): ?FulfillmentDestinationResponseInterface
-    {
+    private function convertAddressToDestination(
+        Address $address,
+        ?string $submittedId = null
+    ): ?FulfillmentDestinationResponseInterface {
         if (!$address->getCountryId()) {
             return null;
         }
@@ -188,7 +196,7 @@ class QuoteToFulfillmentResponse
 
         /** @var FulfillmentDestinationResponseInterface $destination */
         $destination = $this->fulfillmentDestinationResponseFactory->create();
-        $destination->setId((string) $address->getId());
+        $destination->setId($submittedId ?? (string) $address->getId());
 
         if ($streetAddress) {
             $destination->setStreetAddress($streetAddress);
