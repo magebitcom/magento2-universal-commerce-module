@@ -100,12 +100,13 @@ class QuoteItemToLineItemResponse
             $totals[] = $total;
         }
 
-        // Discount (item-level discount)
-        $discountAmount = (float) $quoteItem->getDiscountAmount();
+        // Item-level discount, emitted negative: the spec constrains `items_discount` to
+        // `exclusiveMaximum: 0`, so the sign is part of the value rather than presentation.
+        $discountAmount = abs((float) $quoteItem->getDiscountAmount());
         if ($discountAmount > 0) {
             $total = $this->totalResponseFactory->create();
             $total->setType(TotalTypeInterface::TYPE_ITEMS_DISCOUNT);
-            $total->setAmount($this->minorUnits->convert($discountAmount, $currencyCode));
+            $total->setAmount($this->minorUnits->convert(-$discountAmount, $currencyCode));
             $total->setDisplayText('Discount');
             $totals[] = $total;
         }

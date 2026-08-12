@@ -51,11 +51,13 @@ class QuoteToTotalsResponseTest extends TestCase
     }
 
     /**
-     * Magento reports discounts negative; the spec types amount as minimum 0.
+     * The sign is intrinsic to the value: `total_resp` types discount amounts as `signed_amount` with
+     * `exclusiveMaximum: 0`, so a positive discount is a schema violation rather than a presentation
+     * choice. The 2026-01-23 snapshot typed every amount `minimum: 0`, which is why this reversed.
      *
      * @return void
      */
-    public function testDiscountIsEmittedAsAPositiveAmount(): void
+    public function testDiscountIsEmittedAsANegativeAmount(): void
     {
         $totals = $this->convert([
             ['subtotal', 'Subtotal', 100.00],
@@ -63,22 +65,48 @@ class QuoteToTotalsResponseTest extends TestCase
             ['grand_total', 'Grand Total', 85.00],
         ]);
 
-        $this->assertSame(1500, $totals[TotalTypeInterface::TYPE_DISCOUNT]);
+        $this->assertSame(-1500, $totals[TotalTypeInterface::TYPE_DISCOUNT]);
     }
 
     /**
+     * Magento's own sign is not consistent between total rows, so the type decides the sign rather
+     * than the value that arrived.
+     *
      * @return void
      */
-    public function testEveryAmountIsNonNegative(): void
+    public function testAPositiveMagentoDiscountRowIsStillEmittedNegative(): void
+    {
+        $totals = $this->convert([
+            ['subtotal', 'Subtotal', 100.00],
+            ['discount', 'Discount', 15.00],
+            ['grand_total', 'Grand Total', 85.00],
+        ]);
+
+        $this->assertSame(-1500, $totals[TotalTypeInterface::TYPE_DISCOUNT]);
+    }
+
+    /**
+     * `subtotal`, `fulfillment`, `tax` and `fee` carry `minimum: 0`, so only discounts may be negative.
+     *
+     * @return void
+     */
+    public function testOnlyDiscountAmountsAreNegative(): void
     {
         $totals = $this->convert([
             ['subtotal', 'Subtotal', 100.00],
             ['discount', 'Discount', -15.00],
             ['shipping_discount', 'Shipping Discount', -5.00],
-            ['grand_total', 'Grand Total', 80.00],
+            ['shipping', 'Shipping', 7.50],
+            ['tax', 'Tax', 4.25],
+            ['grand_total', 'Grand Total', 91.75],
         ]);
 
-        foreach ($totals as $amount) {
+        foreach ($totals as $type => $amount) {
+            if ($type === TotalTypeInterface::TYPE_DISCOUNT) {
+                $this->assertLessThan(0, $amount);
+                continue;
+            }
+
             $this->assertGreaterThanOrEqual(0, $amount);
         }
     }
@@ -97,7 +125,7 @@ class QuoteToTotalsResponseTest extends TestCase
             ['grand_total', 'Grand Total', 80.00],
         ]);
 
-        $this->assertSame(2000, $totals[TotalTypeInterface::TYPE_DISCOUNT]);
+        $this->assertSame(-2000, $totals[TotalTypeInterface::TYPE_DISCOUNT]);
     }
 
     /**
