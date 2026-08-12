@@ -201,6 +201,9 @@ class RestHandler implements RestHandlerInterface
         $meta->setCheckoutId($checkoutId);
         $meta->setQuoteId($quoteId);
         $meta->setSubmittedFulfillment($this->encodeFulfillment($fulfillment));
+        // Recorded at create time because the agent's header is only present on its own requests; an
+        // order event fires later, out of band, with no request to read it from.
+        $meta->setWebhookUrl($this->checkoutDataProcessor->getAgentWebhookUrl());
 
         $this->checkoutMetaRepository->save($meta);
     }

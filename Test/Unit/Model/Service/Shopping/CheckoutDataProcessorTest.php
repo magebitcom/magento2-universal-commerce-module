@@ -55,6 +55,16 @@ class CheckoutDataProcessorTest extends TestCase
     private ShippingMethodWriter $shippingMethodWriter;
 
     /**
+     * @var AgentProfileParser&MockObject
+     */
+    private AgentProfileParser $agentProfileParser;
+
+    /**
+     * @var Http&MockObject
+     */
+    private Http $httpRequest;
+
+    /**
      * @var CheckoutDataProcessor
      */
     private CheckoutDataProcessor $processor;
@@ -74,14 +84,17 @@ class CheckoutDataProcessorTest extends TestCase
             return $this->createMock(MessageInterface::class);
         });
 
+        $this->agentProfileParser = $this->createMock(AgentProfileParser::class);
+        $this->httpRequest = $this->createMock(Http::class);
+
         $this->processor = new CheckoutDataProcessor(
             $this->lineItemWriter,
             new AddressWriter(),
             new PersonalInformationCopier(),
             $this->shippingMethodWriter,
             $this->createMock(GuestCouponManagementInterface::class),
-            $this->createMock(AgentProfileParser::class),
-            $this->createMock(Http::class),
+            $this->agentProfileParser,
+            $this->httpRequest,
             $messageFactory
         );
     }
@@ -343,6 +356,32 @@ class CheckoutDataProcessorTest extends TestCase
 
         $this->assertCount(1, $this->createdMessages);
         $this->assertSame('$.line_items[0].item.id', $this->createdMessages[0]['path']);
+    }
+
+    /**
+     * The URL was parsed out of the agent's profile and then dropped, so nothing was ever sent order
+     * events. It is persisted with the checkout because the header is only on the agent's own requests.
+     *
+     * @return void
+     */
+    public function testTheAgentsWebhookUrlIsReadFromItsProfile(): void
+    {
+        $this->httpRequest->method('getHeader')->willReturn('profile="https://agent.test/.well-known/ucp"');
+
+        $this->agentProfileParser->method('parseWebhookUrl')->willReturn('https://agent.test/hooks/orders');
+
+        $this->assertSame('https://agent.test/hooks/orders', $this->processor->getAgentWebhookUrl());
+    }
+
+    /**
+     * @return void
+     */
+    public function testNoAgentHeaderMeansNoWebhookUrl(): void
+    {
+        $this->httpRequest->method('getHeader')->willReturn(false);
+        $this->agentProfileParser->expects($this->never())->method('parseWebhookUrl');
+
+        $this->assertNull($this->processor->getAgentWebhookUrl());
     }
 
     /**

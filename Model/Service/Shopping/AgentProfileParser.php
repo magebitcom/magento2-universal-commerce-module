@@ -57,34 +57,43 @@ class AgentProfileParser
     public function parse(?string $ucpAgentHeader = null): OrderResponsePlatformSchemaInterface
     {
         $platformConfig = $this->platformSchemaFactory->create();
+        $webhookUrl = $this->parseWebhookUrl($ucpAgentHeader);
 
+        // Left unset rather than blank when the profile declares none: the generated field is
+        // required-typed, so writing null would make every later read raise.
+        return $webhookUrl === null ? $platformConfig : $platformConfig->setWebhookUrl($webhookUrl);
+    }
+
+    /**
+     * The agent's own order-event URL, or null when it declares none. Callers want the field far more
+     * often than the schema around it, and the schema's getter raises on an absent value.
+     *
+     * @param string|null $ucpAgentHeader
+     * @return string|null
+     */
+    public function parseWebhookUrl(?string $ucpAgentHeader = null): ?string
+    {
         if (!$ucpAgentHeader) {
-            return $platformConfig;
+            return null;
         }
 
         $profileUri = $this->extractProfileUri($ucpAgentHeader);
+
         if (!$profileUri) {
-            return $platformConfig;
+            return null;
         }
 
         try {
             $profileData = $this->fetchProfileData($profileUri);
-            if (!$profileData) {
-                return $platformConfig;
-            }
 
-            $webhookUrl = $this->extractWebhookUrl($profileData);
-            if (!$webhookUrl) {
-                return $platformConfig;
-            }
-
-            return $platformConfig->setWebhookUrl($webhookUrl);
+            return $profileData ? $this->extractWebhookUrl($profileData) : null;
         } catch (\Exception $e) {
             $this->logger->warning('Failed to fetch or parse agent profile', [
                 'exception' => $e->getMessage(),
                 'uri' => $profileUri
             ]);
-            return $platformConfig;
+
+            return null;
         }
     }
 

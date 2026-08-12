@@ -59,6 +59,9 @@
     <preference for="Magebit\UcpSpec\Api\CapabilityBusinessSchemaInterface" type="Magebit\UcpSpec\Data\CapabilityBusinessSchema" />
     <preference for="Magebit\UcpSpec\Api\CapabilityResponseSchemaInterface" type="Magebit\UcpSpec\Data\CapabilityResponseSchema" />
     <preference for="Magebit\UcpSpec\Api\UcpResponseCheckoutSchemaInterface" type="Magebit\UcpSpec\Data\UcpResponseCheckoutSchema" />
+    <!-- Carries the agent's own webhook URL. Unbound until the profile parser gained a caller, because
+         nothing had ever built one. -->
+    <preference for="Magebit\UcpSpec\Api\Shopping\OrderResponsePlatformSchemaInterface" type="Magebit\UcpSpec\Data\Shopping\OrderResponsePlatformSchema" />
 
     <!-- Services -->
     <preference for="Magebit\UcpSpec\Api\ServiceBusinessSchemaInterface" type="Magebit\UcpSpec\Data\ServiceBusinessSchema" />

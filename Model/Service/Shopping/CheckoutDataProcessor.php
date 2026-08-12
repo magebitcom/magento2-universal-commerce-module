@@ -156,23 +156,22 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
     }
 
     /**
-     * Process agent profile
+     * The URL the agent wants order lifecycle events sent to, from the profile its `UCP-Agent` header
+     * points at. Persisted with the checkout so it is still available when the order moves.
      *
-     * @return void
+     * @return string|null
      */
-    public function processAgentProfile(): void
+    public function getAgentWebhookUrl(): ?string
     {
         $ucpAgentHeader = $this->httpRequest->getHeader('UCP-Agent');
 
-        if (!is_string($ucpAgentHeader)) {
-            return;
+        if (!is_string($ucpAgentHeader) || $ucpAgentHeader === '') {
+            return null;
         }
 
-        $agentProfile = $this->agentProfileParser->parse($ucpAgentHeader);
-
-        if (!$agentProfile) {
-            return;
-        }
+        // The parser caps the fetch at five seconds, follows at most three redirects and caches for an
+        // hour, so resolving the profile inline costs a bounded miss rather than an open-ended wait.
+        return $this->agentProfileParser->parseWebhookUrl($ucpAgentHeader);
     }
 
     /**
