@@ -13,20 +13,28 @@ declare(strict_types=1);
 namespace Magebit\UniversalCommerce\Model;
 
 use JsonSerializable;
+use Magebit\AgenticCore\Api\Data\IdempotencyRecordInterface;
+use Magebit\AgenticCore\Model\Idempotency\ClaimOutcome;
+use Magebit\AgenticCore\Model\Idempotency\Coordinator;
+use Magebit\AgenticCore\Model\Idempotency\RequestHasher;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
-use Magebit\UniversalCommerce\Api\Data\IdempotencyKeyInterface;
-use Magebit\UniversalCommerce\Api\Data\IdempotencyKeyInterfaceFactory;
-use Magebit\UniversalCommerce\Api\IdempotencyKeyRepositoryInterface;
 use Magento\Framework\App\Request\Http;
 use Magento\Framework\Controller\Result\Json as ResultJson;
 use Magento\Framework\Controller\Result\JsonFactory;
-use Magento\Framework\Exception\NoSuchEntityException;
-use Magento\Framework\Stdlib\DateTime\DateTime;
+use Magento\Framework\Exception\CouldNotSaveException;
 
+/**
+ * Maps the shared claim outcomes onto this protocol's envelope. The arbitration itself is shared.
+ */
 class IdempotencyHandler
 {
     public const HEADER_NAME = 'Idempotency-Key';
+
+    /**
+     * Partitions this module's rows in the shared table.
+     */
+    public const SCOPE = 'ucp';
 
     /**
      * Replaying a safe method would hide current state, so idempotency applies to unsafe methods only.
@@ -34,28 +42,21 @@ class IdempotencyHandler
     private const SAFE_METHODS = ['GET', 'HEAD', 'OPTIONS', 'TRACE'];
 
     /**
-     * A claim older than this without a stored response is treated as abandoned by a crashed request.
-     */
-    private const ABANDONED_CLAIM_SECONDS = 60;
-
-    /**
      * Advertised in Retry-After while another caller still owns the claim.
      */
     private const RETRY_AFTER_SECONDS = 1;
 
     /**
-     * @param IdempotencyKeyRepositoryInterface $idempotencyRepository
-     * @param IdempotencyKeyInterfaceFactory $idempotencyKeyFactory
+     * @param Coordinator $coordinator
+     * @param RequestHasher $hasher
      * @param JsonFactory $resultJsonFactory
      * @param MessageInterfaceFactory $messageFactory
-     * @param DateTime $dateTime
      */
     public function __construct(
-        protected readonly IdempotencyKeyRepositoryInterface $idempotencyRepository,
-        protected readonly IdempotencyKeyInterfaceFactory $idempotencyKeyFactory,
+        protected readonly Coordinator $coordinator,
+        protected readonly RequestHasher $hasher,
         protected readonly JsonFactory $resultJsonFactory,
-        protected readonly MessageInterfaceFactory $messageFactory,
-        protected readonly DateTime $dateTime
+        protected readonly MessageInterfaceFactory $messageFactory
     ) {
     }
 
@@ -73,76 +74,41 @@ class IdempotencyHandler
             return null;
         }
 
-        $requestHash = $this->hashRequest($request);
+        $result = $this->coordinator->claim(self::SCOPE, $key, $this->hasher->hash($request));
 
-        if ($this->idempotencyRepository->claim($key, $requestHash)) {
-            return null;
-        }
-
-        try {
-            $idempotency = $this->idempotencyRepository->getByKey($key);
-        } catch (NoSuchEntityException $exception) {
-            // Purged between the failed claim and this read; nothing to replay.
-            return null;
-        }
-
-        if ($idempotency->getRequestHash() !== $requestHash) {
-            return $this->makeConflictResponse(
+        return match ($result->outcome) {
+            ClaimOutcome::Claimed => null,
+            ClaimOutcome::Conflict => $this->makeConflictResponse(
                 'idempotency_key_reuse',
                 'Idempotency-Key was already used for a different request.'
-            );
-        }
-
-        if ($idempotency->getResponseStatus() === null) {
-            return $this->handleInFlight($key, $requestHash);
-        }
-
-        return $this->makeReplayResponse($idempotency);
+            ),
+            ClaimOutcome::InFlight => $this->makeInFlightResponse(),
+            ClaimOutcome::Replay => $this->makeReplayResponse($result->record),
+        };
     }
 
     /**
      * @param Http $request
      * @param JsonSerializable $response
      * @param int $status
-     * @return IdempotencyKeyInterface|null
+     * @return void
+     * @throws CouldNotSaveException
      */
-    public function storeResponse(Http $request, JsonSerializable $response, int $status): ?IdempotencyKeyInterface
+    public function storeResponse(Http $request, JsonSerializable $response, int $status): void
     {
         $key = $this->getKey($request);
 
         if ($key === null) {
-            return null;
+            return;
         }
 
-        try {
-            $idempotency = $this->idempotencyRepository->getByKey($key);
-        } catch (NoSuchEntityException $exception) {
-            /** @var IdempotencyKeyInterface $idempotency */
-            $idempotency = $this->idempotencyKeyFactory->create();
-            $idempotency->setKey($key);
-        }
-
-        $idempotency->setRequestHash($this->hashRequest($request));
-        $idempotency->setResponseBody((string) json_encode($response));
-        $idempotency->setResponseStatus($status);
-
-        $this->idempotencyRepository->save($idempotency);
-
-        return $idempotency;
-    }
-
-    /**
-     * @param Http $request
-     * @return string
-     */
-    protected function hashRequest(Http $request): string
-    {
-        return hash('sha256', (string) json_encode([
-            'method' => $request->getMethod(),
-            'path' => $request->getPathInfo(),
-            'query' => $request->getQuery(),
-            'body' => $request->getContent(),
-        ]));
+        $this->coordinator->storeResponse(
+            self::SCOPE,
+            $key,
+            $this->hasher->hash($request),
+            $status,
+            (string) json_encode($response)
+        );
     }
 
     /**
@@ -165,21 +131,10 @@ class IdempotencyHandler
     }
 
     /**
-     * @param string $key
-     * @param string $requestHash
-     * @return ResultJson|null Null when the abandoned claim was taken over.
+     * @return ResultJson
      */
-    protected function handleInFlight(string $key, string $requestHash): ?ResultJson
+    protected function makeInFlightResponse(): ResultJson
     {
-        $abandonedBefore = $this->dateTime->gmtDate(
-            'Y-m-d H:i:s',
-            $this->dateTime->gmtTimestamp() - self::ABANDONED_CLAIM_SECONDS
-        );
-
-        if ($this->idempotencyRepository->reclaimAbandoned($key, $requestHash, $abandonedBefore)) {
-            return null;
-        }
-
         $result = $this->makeConflictResponse(
             'idempotency_key_in_flight',
             'A request with this Idempotency-Key is still being processed.'
@@ -190,14 +145,14 @@ class IdempotencyHandler
     }
 
     /**
-     * @param IdempotencyKeyInterface $idempotency
+     * @param IdempotencyRecordInterface|null $record
      * @return ResultJson
      */
-    protected function makeReplayResponse(IdempotencyKeyInterface $idempotency): ResultJson
+    protected function makeReplayResponse(?IdempotencyRecordInterface $record): ResultJson
     {
         $result = $this->resultJsonFactory->create();
-        $result->setJsonData($idempotency->getResponseBody() ?? '');
-        $result->setHttpResponseCode((int) $idempotency->getResponseStatus());
+        $result->setJsonData($record?->getResponseBody() ?? '');
+        $result->setHttpResponseCode((int) $record?->getResponseStatus());
 
         return $result;
     }

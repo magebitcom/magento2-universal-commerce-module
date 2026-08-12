@@ -37,42 +37,6 @@ parameters:
 			path: Model/CheckoutMeta/Model.php
 
 		-
-			message: '#^Cannot cast mixed to int\.$#'
-			identifier: cast.int
-			count: 2
-			path: Model/IdempotencyKey/Model.php
-
-		-
-			message: '#^Method Magebit\\UniversalCommerce\\Model\\IdempotencyKey\\Model\:\:getCreatedAt\(\) should return string\|null but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: Model/IdempotencyKey/Model.php
-
-		-
-			message: '#^Method Magebit\\UniversalCommerce\\Model\\IdempotencyKey\\Model\:\:getKey\(\) should return string\|null but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: Model/IdempotencyKey/Model.php
-
-		-
-			message: '#^Method Magebit\\UniversalCommerce\\Model\\IdempotencyKey\\Model\:\:getRequestHash\(\) should return string\|null but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: Model/IdempotencyKey/Model.php
-
-		-
-			message: '#^Method Magebit\\UniversalCommerce\\Model\\IdempotencyKey\\Model\:\:getResponseBody\(\) should return string\|null but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: Model/IdempotencyKey/Model.php
-
-		-
-			message: '#^Method Magebit\\UniversalCommerce\\Model\\IdempotencyKey\\Model\:\:getUpdatedAt\(\) should return string\|null but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: Model/IdempotencyKey/Model.php
-
-		-
 			message: '#^Parameter \#2 \$data of method Magebit\\UniversalCommerce\\Model\\RequestClassBuilder\:\:populateWithArray\(\) expects array\<mixed\>, mixed given\.$#'
 			identifier: argument.type
 			count: 1
