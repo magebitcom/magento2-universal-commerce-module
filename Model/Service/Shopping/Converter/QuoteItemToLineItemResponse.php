@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Service\Shopping\Converter;
 
+use Magebit\AgenticCore\Model\Money\MinorUnits;
 use Magebit\UcpSpec\Api\Shopping\Types\LineItemResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\ItemResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
@@ -30,7 +31,7 @@ class QuoteItemToLineItemResponse
         protected readonly ItemResponseInterfaceFactory $itemResponseFactory,
         protected readonly TotalResponseInterfaceFactory $totalResponseFactory,
         protected readonly ImageHelper $imageHelper,
-        protected readonly PriceConverter $priceConverter
+        protected readonly MinorUnits $minorUnits
     ) {
     }
 
@@ -63,7 +64,7 @@ class QuoteItemToLineItemResponse
         $item = $this->itemResponseFactory->create();
         $item->setId($product->getSku());
         $item->setTitle($product->getName());
-        $item->setPrice($this->priceConverter->convert(
+        $item->setPrice($this->minorUnits->convert(
             (float) $quoteItem->getPrice(),
             $this->getCurrencyCode($quoteItem)
         ));
@@ -94,7 +95,7 @@ class QuoteItemToLineItemResponse
         if ($subtotal > 0) {
             $total = $this->totalResponseFactory->create();
             $total->setType(TotalTypeInterface::TYPE_SUBTOTAL);
-            $total->setAmount($this->priceConverter->convert($subtotal, $currencyCode));
+            $total->setAmount($this->minorUnits->convert($subtotal, $currencyCode));
             $total->setDisplayText('Subtotal');
             $totals[] = $total;
         }
@@ -104,7 +105,7 @@ class QuoteItemToLineItemResponse
         if ($discountAmount > 0) {
             $total = $this->totalResponseFactory->create();
             $total->setType(TotalTypeInterface::TYPE_ITEMS_DISCOUNT);
-            $total->setAmount($this->priceConverter->convert($discountAmount, $currencyCode));
+            $total->setAmount($this->minorUnits->convert($discountAmount, $currencyCode));
             $total->setDisplayText('Discount');
             $totals[] = $total;
         }
@@ -113,7 +114,7 @@ class QuoteItemToLineItemResponse
         $rowTotal = (float) $quoteItem->getRowTotalInclTax();
         $total = $this->totalResponseFactory->create();
         $total->setType(TotalTypeInterface::TYPE_TOTAL);
-        $total->setAmount($this->priceConverter->convert($rowTotal, $currencyCode));
+        $total->setAmount($this->minorUnits->convert($rowTotal, $currencyCode));
         $total->setDisplayText('Total');
         $totals[] = $total;
 

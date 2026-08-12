@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Service\Shopping\Converter;
 
+use Magebit\AgenticCore\Model\Money\MinorUnits;
 use Magento\Quote\Api\Data\CartInterface;
 use Magento\Quote\Model\Quote;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentResponseInterface;
@@ -45,7 +46,7 @@ class QuoteToFulfillmentResponse
      * @param FulfillmentOptionResponseInterfaceFactory $fulfillmentOptionResponseFactory
      * @param FulfillmentDestinationResponseInterfaceFactory $fulfillmentDestinationResponseFactory
      * @param TotalResponseInterfaceFactory $totalResponseFactory
-     * @param PriceConverter $priceConverter
+     * @param MinorUnits $minorUnits
      */
     public function __construct(
         protected readonly FulfillmentResponseInterfaceFactory $fulfillmentResponseFactory,
@@ -54,7 +55,7 @@ class QuoteToFulfillmentResponse
         protected readonly FulfillmentOptionResponseInterfaceFactory $fulfillmentOptionResponseFactory,
         protected readonly FulfillmentDestinationResponseInterfaceFactory $fulfillmentDestinationResponseFactory,
         protected readonly TotalResponseInterfaceFactory $totalResponseFactory,
-        protected readonly PriceConverter $priceConverter
+        protected readonly MinorUnits $minorUnits
     ) {
     }
 
@@ -244,7 +245,7 @@ class QuoteToFulfillmentResponse
             $price = (float) $rate->getPrice();
             $total = $this->totalResponseFactory->create();
             $total->setType(TotalTypeInterface::TYPE_FULFILLMENT);
-            $total->setAmount($this->priceConverter->convert($price, $currencyCode));
+            $total->setAmount($this->minorUnits->convert($price, $currencyCode));
             $total->setDisplayText($rate->getMethodTitle() ?: $rate->getCarrierTitle());
 
             $option->setTotals([$total]);

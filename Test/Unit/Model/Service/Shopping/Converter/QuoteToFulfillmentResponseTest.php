@@ -25,7 +25,7 @@ use Magebit\UcpSpec\Data\Shopping\Types\FulfillmentMethodResponse;
 use Magebit\UcpSpec\Data\Shopping\Types\FulfillmentOptionResponse;
 use Magebit\UcpSpec\Data\Shopping\Types\FulfillmentResponse;
 use Magebit\UcpSpec\Data\Shopping\Types\TotalResponse;
-use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\PriceConverter;
+use Magebit\AgenticCore\Model\Money\MinorUnits;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\QuoteToFulfillmentResponse;
 use Magento\Quote\Model\Quote;
 use Magento\Quote\Model\Quote\Address;
@@ -52,7 +52,7 @@ class QuoteToFulfillmentResponseTest extends TestCase
                 FulfillmentDestinationResponse::class
             ),
             $this->factory(TotalResponseInterfaceFactory::class, TotalResponse::class),
-            new PriceConverter()
+            new MinorUnits()
         );
     }
 

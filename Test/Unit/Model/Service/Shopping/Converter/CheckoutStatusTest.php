@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Test\Unit\Model\Service\Shopping\Converter;
 
+use Magebit\AgenticCore\Model\Checkout\StateResolver;
 use Magebit\UniversalCommerce\Api\Service\Shopping\CheckoutResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\QuoteToCheckoutResponse;
@@ -26,14 +27,20 @@ class CheckoutStatusTest extends TestCase
     private QuoteToCheckoutResponse $converter;
 
     /**
-     * The status rule is pure; instantiate without the constructor so the test
-     * does not have to stand up eleven collaborators to exercise it.
+     * The status rule is pure; instantiate without the constructor so the test does not have to stand
+     * up eleven collaborators, then supply only the resolver it delegates to. What is asserted here is
+     * the mapping onto this protocol's vocabulary — the resolution itself is covered in the base module.
      *
      * @return void
      */
     protected function setUp(): void
     {
-        $this->converter = (new ReflectionClass(QuoteToCheckoutResponse::class))->newInstanceWithoutConstructor();
+        $reflection = new ReflectionClass(QuoteToCheckoutResponse::class);
+        $this->converter = $reflection->newInstanceWithoutConstructor();
+
+        $property = $reflection->getProperty('stateResolver');
+        $property->setAccessible(true);
+        $property->setValue($this->converter, new StateResolver());
     }
 
     /**

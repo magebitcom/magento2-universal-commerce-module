@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Service\Shopping\Converter;
 
+use Magebit\AgenticCore\Model\Buyer\BuyerResolver;
 use Magebit\UcpSpec\Api\Shopping\Types\BuyerInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\BuyerInterfaceFactory;
 use Magento\Quote\Api\Data\CartInterface;
@@ -21,9 +22,11 @@ class QuoteToBuyerResponse
 {
     /**
      * @param BuyerInterfaceFactory $buyerInterfaceFactory
+     * @param BuyerResolver $buyerResolver
      */
     public function __construct(
         protected readonly BuyerInterfaceFactory $buyerInterfaceFactory,
+        protected readonly BuyerResolver $buyerResolver,
     ) {
     }
 
@@ -34,35 +37,30 @@ class QuoteToBuyerResponse
     public function convert(CartInterface $quote): ?BuyerInterface
     {
         /** @var Quote $quote */
-        $billingAddress = $quote->getBillingAddress();
-
-        $firstName = $quote->getCustomerFirstname() ?: $billingAddress->getFirstname();
-        $lastName = $quote->getCustomerLastname() ?: $billingAddress->getLastname();
-        $email = $quote->getCustomerEmail() ?: $billingAddress->getEmail();
-        $phoneNumber = $billingAddress->getTelephone();
+        $identity = $this->buyerResolver->resolve($quote);
 
         // An all-empty buyer is omitted rather than sent as an empty object.
-        if (!$firstName && !$lastName && !$email && !$phoneNumber) {
+        if ($identity->isEmpty()) {
             return null;
         }
 
         /** @var BuyerInterface $buyer */
         $buyer = $this->buyerInterfaceFactory->create();
 
-        if ($firstName) {
-            $buyer->setFirstName($firstName);
+        if ($identity->firstName !== null) {
+            $buyer->setFirstName($identity->firstName);
         }
 
-        if ($lastName) {
-            $buyer->setLastName($lastName);
+        if ($identity->lastName !== null) {
+            $buyer->setLastName($identity->lastName);
         }
 
-        if ($email) {
-            $buyer->setEmail($email);
+        if ($identity->email !== null) {
+            $buyer->setEmail($identity->email);
         }
 
-        if ($phoneNumber) {
-            $buyer->setPhoneNumber($phoneNumber);
+        if ($identity->phoneNumber !== null) {
+            $buyer->setPhoneNumber($identity->phoneNumber);
         }
 
         return $buyer;

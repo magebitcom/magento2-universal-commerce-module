@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Service\Shopping\Converter;
 
+use Magebit\AgenticCore\Model\Money\MinorUnits;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
 use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
@@ -39,12 +40,12 @@ class QuoteToTotalsResponse
 
     /**
      * @param TotalResponseInterfaceFactory $totalResponseFactory
-     * @param PriceConverter $priceConverter
+     * @param MinorUnits $minorUnits
      * @param array<string, string> $typeMapping
      */
     public function __construct(
         private readonly TotalResponseInterfaceFactory $totalResponseFactory,
-        private readonly PriceConverter $priceConverter,
+        private readonly MinorUnits $minorUnits,
         private readonly array $typeMapping = [],
     ) {
     }
@@ -88,7 +89,7 @@ class QuoteToTotalsResponse
             $total = $this->totalResponseFactory->create();
             $total->setType($type);
             $total->setDisplayText($labels[$type] ?? $this->fallbackLabel($type));
-            $total->setAmount($this->priceConverter->convert($amounts[$type], $currencyCode));
+            $total->setAmount($this->minorUnits->convert($amounts[$type], $currencyCode));
 
             $totals[] = $total;
         }

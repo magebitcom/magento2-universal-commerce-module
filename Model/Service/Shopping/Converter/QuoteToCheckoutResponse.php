@@ -38,6 +38,8 @@ use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UcpSpec\Api\Shopping\Types\OrderConfirmationInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\OrderConfirmationInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\LinkInterfaceFactory;
+use Magebit\AgenticCore\Model\Checkout\CheckoutState;
+use Magebit\AgenticCore\Model\Checkout\StateResolver;
 use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Framework\Exception\NoSuchEntityException;
 
@@ -59,6 +61,7 @@ class QuoteToCheckoutResponse
      * @param OrderRepositoryInterface $orderRepository
      * @param LinkInterfaceFactory $linkFactory
      * @param Config $config
+     * @param StateResolver $stateResolver
      */
     public function __construct(
         protected readonly CheckoutResponseInterfaceFactory $checkoutResponseFactory,
@@ -75,7 +78,8 @@ class QuoteToCheckoutResponse
         protected readonly OrderConfirmationInterfaceFactory $orderConfirmationFactory,
         protected readonly OrderRepositoryInterface $orderRepository,
         protected readonly LinkInterfaceFactory $linkFactory,
-        protected readonly Config $config
+        protected readonly Config $config,
+        protected readonly StateResolver $stateResolver
     ) {
     }
 
@@ -196,20 +200,14 @@ class QuoteToCheckoutResponse
      */
     public function getStatus(CartInterface $quote, array $validationErrors, bool $hasOrder = false): string
     {
-        // Placing an order deactivates the quote, so order state must win over quote state.
-        if ($hasOrder) {
-            return CheckoutResponseInterface::STATUS_COMPLETED;
-        }
+        $state = $this->stateResolver->resolve($quote, $hasOrder, $validationErrors !== []);
 
-        if (!$quote->getIsActive()) {
-            return CheckoutResponseInterface::STATUS_CANCELED;
-        }
-
-        if (!empty($validationErrors)) {
-            return CheckoutResponseInterface::STATUS_INCOMPLETE;
-        }
-
-        return CheckoutResponseInterface::STATUS_READY_FOR_COMPLETE;
+        return match ($state) {
+            CheckoutState::Completed => CheckoutResponseInterface::STATUS_COMPLETED,
+            CheckoutState::Canceled => CheckoutResponseInterface::STATUS_CANCELED,
+            CheckoutState::Incomplete => CheckoutResponseInterface::STATUS_INCOMPLETE,
+            CheckoutState::Ready => CheckoutResponseInterface::STATUS_READY_FOR_COMPLETE,
+        };
     }
 
     /**
