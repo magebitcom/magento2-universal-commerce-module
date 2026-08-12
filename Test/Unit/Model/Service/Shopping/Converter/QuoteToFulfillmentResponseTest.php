@@ -25,16 +25,19 @@ use Magebit\UcpSpec\Data\Shopping\Types\FulfillmentMethodResponse;
 use Magebit\UcpSpec\Data\Shopping\Types\FulfillmentOptionResponse;
 use Magebit\UcpSpec\Data\Shopping\Types\FulfillmentResponse;
 use Magebit\UcpSpec\Data\Shopping\Types\TotalResponse;
-use Magebit\AgenticCore\Model\Money\MinorUnits;
+use Magebit\AgenticCore\Model\Fulfillment\ShippingOption;
+use Magebit\AgenticCore\Model\Fulfillment\ShippingOptionResolver;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\QuoteToFulfillmentResponse;
 use Magento\Quote\Model\Quote;
 use Magento\Quote\Model\Quote\Address;
-use Magento\Quote\Model\Quote\Address\Rate;
-use Magento\Quote\Api\Data\CurrencyInterface;
 use PHPUnit\Framework\TestCase;
 
 class QuoteToFulfillmentResponseTest extends TestCase
 {
+    private const AMOUNT_EXCL_TAX = 599;
+    private const TAX_AMOUNT = 126;
+    private const AMOUNT_INCL_TAX = 725;
+
     private QuoteToFulfillmentResponse $converter;
 
     /**
@@ -42,6 +45,19 @@ class QuoteToFulfillmentResponseTest extends TestCase
      */
     protected function setUp(): void
     {
+        $resolver = $this->createMock(ShippingOptionResolver::class);
+        $resolver->method('resolve')->willReturn([
+            new ShippingOption(
+                'flatrate_flatrate',
+                'Fixed',
+                'Flat Rate',
+                'Flat Rate',
+                self::AMOUNT_EXCL_TAX,
+                self::TAX_AMOUNT,
+                self::AMOUNT_INCL_TAX
+            ),
+        ]);
+
         $this->converter = new QuoteToFulfillmentResponse(
             $this->factory(FulfillmentResponseInterfaceFactory::class, FulfillmentResponse::class),
             $this->factory(FulfillmentMethodResponseInterfaceFactory::class, FulfillmentMethodResponse::class),
@@ -52,7 +68,7 @@ class QuoteToFulfillmentResponseTest extends TestCase
                 FulfillmentDestinationResponse::class
             ),
             $this->factory(TotalResponseInterfaceFactory::class, TotalResponse::class),
-            new MinorUnits()
+            $resolver
         );
     }
 
@@ -124,7 +140,21 @@ class QuoteToFulfillmentResponseTest extends TestCase
 
         $this->assertCount(1, $options);
         $this->assertSame('flatrate_flatrate', $options[0]->getId());
-        $this->assertSame(599, $options[0]->getTotals()[0]->getAmount());
+    }
+
+    /**
+     * The schema types this total as `fulfillment`, which a consumer adds to the order total, so it
+     * carries the incl-tax amount. It previously carried the excl-tax one and under-quoted shipping
+     * wherever shipping is taxed.
+     *
+     * @return void
+     */
+    public function testTheFulfillmentTotalCarriesTheInclTaxAmount(): void
+    {
+        $options = $this->converter->getMethods($this->address(), ['1'])[0]->getGroups()[0]->getOptions();
+
+        $this->assertSame(self::AMOUNT_INCL_TAX, $options[0]->getTotals()[0]->getAmount());
+        $this->assertNotSame(self::AMOUNT_EXCL_TAX, $options[0]->getTotals()[0]->getAmount());
     }
 
     /**
@@ -145,37 +175,11 @@ class QuoteToFulfillmentResponseTest extends TestCase
      */
     private function address(): Address
     {
-        $rate = $this->getMockBuilder(Rate::class)
-            ->disableOriginalConstructor()
-            ->addMethods([
-                'getCarrier',
-                'getMethod',
-                'getMethodTitle',
-                'getCarrierTitle',
-                'getPrice',
-                'getErrorMessage',
-            ])
-            ->getMock();
-        $rate->method('getErrorMessage')->willReturn(null);
-        $rate->method('getCarrier')->willReturn('flatrate');
-        $rate->method('getMethod')->willReturn('flatrate');
-        $rate->method('getMethodTitle')->willReturn('Fixed');
-        $rate->method('getCarrierTitle')->willReturn('Flat Rate');
-        $rate->method('getPrice')->willReturn(5.99);
-
-        $currency = $this->createMock(CurrencyInterface::class);
-        $currency->method('getStoreCurrencyCode')->willReturn('EUR');
-
-        $quote = $this->getMockBuilder(Quote::class)
-            ->disableOriginalConstructor()
-            ->onlyMethods(['getCurrency'])
-            ->getMock();
-        $quote->method('getCurrency')->willReturn($currency);
+        $quote = $this->getMockBuilder(Quote::class)->disableOriginalConstructor()->onlyMethods([])->getMock();
 
         $address = $this->getMockBuilder(Address::class)
             ->disableOriginalConstructor()
             ->onlyMethods([
-                'getAllShippingRates',
                 'getQuote',
                 'getCountryId',
                 'getStreet',
@@ -183,7 +187,6 @@ class QuoteToFulfillmentResponseTest extends TestCase
                 'getShippingMethod',
             ])
             ->getMock();
-        $address->method('getAllShippingRates')->willReturn([$rate]);
         $address->method('getQuote')->willReturn($quote);
         $address->method('getCountryId')->willReturn('LV');
         $address->method('getStreet')->willReturn(['Brivibas 1']);

@@ -12,12 +12,12 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Service\Shopping\Converter;
 
-use Magebit\AgenticCore\Model\Money\MinorUnits;
+use Magebit\AgenticCore\Model\Fulfillment\ShippingOption;
+use Magebit\AgenticCore\Model\Fulfillment\ShippingOptionResolver;
 use Magento\Quote\Api\Data\CartInterface;
 use Magento\Quote\Model\Quote;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentResponseInterfaceFactory;
-use Magento\Quote\Model\Quote\Address\Rate;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentMethodResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentMethodResponseInterfaceFactory;
 use Magento\Quote\Model\Quote\Address;
@@ -46,7 +46,7 @@ class QuoteToFulfillmentResponse
      * @param FulfillmentOptionResponseInterfaceFactory $fulfillmentOptionResponseFactory
      * @param FulfillmentDestinationResponseInterfaceFactory $fulfillmentDestinationResponseFactory
      * @param TotalResponseInterfaceFactory $totalResponseFactory
-     * @param MinorUnits $minorUnits
+     * @param ShippingOptionResolver $shippingOptionResolver
      */
     public function __construct(
         protected readonly FulfillmentResponseInterfaceFactory $fulfillmentResponseFactory,
@@ -55,7 +55,7 @@ class QuoteToFulfillmentResponse
         protected readonly FulfillmentOptionResponseInterfaceFactory $fulfillmentOptionResponseFactory,
         protected readonly FulfillmentDestinationResponseInterfaceFactory $fulfillmentDestinationResponseFactory,
         protected readonly TotalResponseInterfaceFactory $totalResponseFactory,
-        protected readonly MinorUnits $minorUnits
+        protected readonly ShippingOptionResolver $shippingOptionResolver
     ) {
     }
 
@@ -77,9 +77,7 @@ class QuoteToFulfillmentResponse
             return null;
         }
 
-        $shippingAddress->setCollectShippingRates(true);
-        $shippingAddress->collectShippingRates();
-
+        // The shared resolver collects the rates; nothing here needs to prompt it.
         $quoteItemIds = array_map(function (Quote\Item $quoteItem) {
             return (string) $quoteItem->getId();
         }, $quote->getAllItems());
@@ -100,13 +98,9 @@ class QuoteToFulfillmentResponse
      */
     public function getMethods(Address $shippingAddress, array $quoteItemIds, ?array $submittedMethod = null): array
     {
-        $shippingRates = $shippingAddress->getAllShippingRates();
+        $shippingOptions = $this->shippingOptionResolver->resolve($shippingAddress->getQuote());
 
-        $shippingRates = array_filter($shippingRates, function (Rate $shippingMethod) {
-            return !$shippingMethod->getErrorMessage();
-        });
-
-        if (empty($shippingRates)) {
+        if ($shippingOptions === []) {
             return [];
         }
 
@@ -132,8 +126,7 @@ class QuoteToFulfillmentResponse
         $group->setId($this->submittedString($submittedGroup, 'id') ?? self::DEFAULT_GROUP_ID);
         $group->setLineItemIds($quoteItemIds);
 
-        $currencyCode = $shippingAddress->getQuote()->getCurrency()?->getStoreCurrencyCode() ?? 'USD';
-        $options = $this->convertShippingRatesToOptions($shippingRates, $currencyCode);
+        $options = $this->convertOptions($shippingOptions);
         if (!empty($options)) {
             $group->setOptions(array_values($options));
 
@@ -227,30 +220,30 @@ class QuoteToFulfillmentResponse
     }
 
     /**
-     * @param Rate[] $shippingRates
-     * @param string $currencyCode
+     * The fulfillment total carries the incl-tax amount, which is what a consumer adding it to the
+     * order total needs; the excl-tax amount would under-quote shipping wherever shipping is taxed.
+     *
+     * @param ShippingOption[] $shippingOptions
      * @return FulfillmentOptionResponseInterface[]
      */
-    private function convertShippingRatesToOptions(array $shippingRates, string $currencyCode): array
+    private function convertOptions(array $shippingOptions): array
     {
-        return array_map(function (Rate $rate) use ($currencyCode) {
+        return array_map(function (ShippingOption $shippingOption) {
             /** @var FulfillmentOptionResponseInterface $option */
             $option = $this->fulfillmentOptionResponseFactory->create();
-            $option->setId($rate->getCarrier() . '_' . $rate->getMethod());
-            $option->setTitle($rate->getMethodTitle() ?: $rate->getCarrierTitle());
-            $option->setDescription($rate->getMethodTitle() ? $rate->getCarrierTitle() : null);
-            $option->setCarrier($rate->getCarrierTitle());
+            $option->setId($shippingOption->id);
+            $option->setTitle($shippingOption->title);
+            $option->setDescription($shippingOption->description);
+            $option->setCarrier($shippingOption->carrier);
 
-            // Create totals for the option
-            $price = (float) $rate->getPrice();
             $total = $this->totalResponseFactory->create();
             $total->setType(TotalTypeInterface::TYPE_FULFILLMENT);
-            $total->setAmount($this->minorUnits->convert($price, $currencyCode));
-            $total->setDisplayText($rate->getMethodTitle() ?: $rate->getCarrierTitle());
+            $total->setAmount($shippingOption->amountInclTax);
+            $total->setDisplayText($shippingOption->title);
 
             $option->setTotals([$total]);
 
             return $option;
-        }, $shippingRates);
+        }, $shippingOptions);
     }
 }
