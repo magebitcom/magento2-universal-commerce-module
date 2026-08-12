@@ -13,6 +13,7 @@ declare(strict_types=1);
 namespace Magebit\UniversalCommerce\Model\Service\Shopping\Converter;
 
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
+use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
 use Magento\Quote\Api\Data\CartInterface;
 use Magento\Quote\Model\Quote;
@@ -27,13 +28,13 @@ class QuoteToTotalsResponse
      * subtotal - discount + fulfillment + tax + fee.
      */
     private const TYPE_ORDER = [
-        TotalResponseInterface::TYPE_ITEMS_DISCOUNT,
-        TotalResponseInterface::TYPE_SUBTOTAL,
-        TotalResponseInterface::TYPE_DISCOUNT,
-        TotalResponseInterface::TYPE_FULFILLMENT,
-        TotalResponseInterface::TYPE_TAX,
-        TotalResponseInterface::TYPE_FEE,
-        TotalResponseInterface::TYPE_TOTAL,
+        TotalTypeInterface::TYPE_ITEMS_DISCOUNT,
+        TotalTypeInterface::TYPE_SUBTOTAL,
+        TotalTypeInterface::TYPE_DISCOUNT,
+        TotalTypeInterface::TYPE_FULFILLMENT,
+        TotalTypeInterface::TYPE_TAX,
+        TotalTypeInterface::TYPE_FEE,
+        TotalTypeInterface::TYPE_TOTAL,
     ];
 
     /**
@@ -105,14 +106,14 @@ class QuoteToTotalsResponse
      */
     private function withRequiredTotals(Quote $cart, array $amounts): array
     {
-        if (!isset($amounts[TotalResponseInterface::TYPE_SUBTOTAL])) {
+        if (!isset($amounts[TotalTypeInterface::TYPE_SUBTOTAL])) {
             $address = $cart->getIsVirtual() ? $cart->getBillingAddress() : $cart->getShippingAddress();
             $subtotal = $address->getSubtotal() ?? $cart->getSubtotal();
-            $amounts[TotalResponseInterface::TYPE_SUBTOTAL] = abs((float) $subtotal);
+            $amounts[TotalTypeInterface::TYPE_SUBTOTAL] = abs((float) $subtotal);
         }
 
-        if (!isset($amounts[TotalResponseInterface::TYPE_TOTAL])) {
-            $amounts[TotalResponseInterface::TYPE_TOTAL] = abs((float) $cart->getGrandTotal());
+        if (!isset($amounts[TotalTypeInterface::TYPE_TOTAL])) {
+            $amounts[TotalTypeInterface::TYPE_TOTAL] = abs((float) $cart->getGrandTotal());
         }
 
         return $amounts;

@@ -13,6 +13,7 @@ declare(strict_types=1);
 namespace Magebit\UniversalCommerce\Test\Unit\Model\Service\Shopping\Converter;
 
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
+use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\PriceConverter;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\QuoteToTotalsResponse;
@@ -27,12 +28,12 @@ use PHPUnit\Framework\TestCase;
 class QuoteToTotalsResponseTest extends TestCase
 {
     private const MAPPING = [
-        'subtotal' => TotalResponseInterface::TYPE_SUBTOTAL,
-        'discount' => TotalResponseInterface::TYPE_DISCOUNT,
-        'shipping_discount' => TotalResponseInterface::TYPE_DISCOUNT,
-        'shipping' => TotalResponseInterface::TYPE_FULFILLMENT,
-        'tax' => TotalResponseInterface::TYPE_TAX,
-        'grand_total' => TotalResponseInterface::TYPE_TOTAL,
+        'subtotal' => TotalTypeInterface::TYPE_SUBTOTAL,
+        'discount' => TotalTypeInterface::TYPE_DISCOUNT,
+        'shipping_discount' => TotalTypeInterface::TYPE_DISCOUNT,
+        'shipping' => TotalTypeInterface::TYPE_FULFILLMENT,
+        'tax' => TotalTypeInterface::TYPE_TAX,
+        'grand_total' => TotalTypeInterface::TYPE_TOTAL,
     ];
 
     /** @var QuoteToTotalsResponse */
@@ -62,7 +63,7 @@ class QuoteToTotalsResponseTest extends TestCase
             ['grand_total', 'Grand Total', 85.00],
         ]);
 
-        $this->assertSame(1500, $totals[TotalResponseInterface::TYPE_DISCOUNT]);
+        $this->assertSame(1500, $totals[TotalTypeInterface::TYPE_DISCOUNT]);
     }
 
     /**
@@ -96,7 +97,7 @@ class QuoteToTotalsResponseTest extends TestCase
             ['grand_total', 'Grand Total', 80.00],
         ]);
 
-        $this->assertSame(2000, $totals[TotalResponseInterface::TYPE_DISCOUNT]);
+        $this->assertSame(2000, $totals[TotalTypeInterface::TYPE_DISCOUNT]);
     }
 
     /**
@@ -113,7 +114,7 @@ class QuoteToTotalsResponseTest extends TestCase
         ]);
 
         $this->assertSame(
-            [TotalResponseInterface::TYPE_SUBTOTAL, TotalResponseInterface::TYPE_TOTAL],
+            [TotalTypeInterface::TYPE_SUBTOTAL, TotalTypeInterface::TYPE_TOTAL],
             array_keys($totals)
         );
     }
@@ -131,8 +132,8 @@ class QuoteToTotalsResponseTest extends TestCase
 
         $types = array_map(fn (TotalResponseInterface $t): string => $t->getType(), $response);
 
-        $this->assertSame(1, array_count_values($types)[TotalResponseInterface::TYPE_SUBTOTAL]);
-        $this->assertSame(1, array_count_values($types)[TotalResponseInterface::TYPE_TOTAL]);
+        $this->assertSame(1, array_count_values($types)[TotalTypeInterface::TYPE_SUBTOTAL]);
+        $this->assertSame(1, array_count_values($types)[TotalTypeInterface::TYPE_TOTAL]);
     }
 
     /**
@@ -142,8 +143,8 @@ class QuoteToTotalsResponseTest extends TestCase
     {
         $totals = $this->convert([['grand_total', 'Grand Total', 42.00]], 37.50);
 
-        $this->assertSame(3750, $totals[TotalResponseInterface::TYPE_SUBTOTAL]);
-        $this->assertSame(4200, $totals[TotalResponseInterface::TYPE_TOTAL]);
+        $this->assertSame(3750, $totals[TotalTypeInterface::TYPE_SUBTOTAL]);
+        $this->assertSame(4200, $totals[TotalTypeInterface::TYPE_TOTAL]);
     }
 
     /**
@@ -160,10 +161,10 @@ class QuoteToTotalsResponseTest extends TestCase
 
         $this->assertSame(
             [
-                TotalResponseInterface::TYPE_SUBTOTAL,
-                TotalResponseInterface::TYPE_DISCOUNT,
-                TotalResponseInterface::TYPE_TAX,
-                TotalResponseInterface::TYPE_TOTAL,
+                TotalTypeInterface::TYPE_SUBTOTAL,
+                TotalTypeInterface::TYPE_DISCOUNT,
+                TotalTypeInterface::TYPE_TAX,
+                TotalTypeInterface::TYPE_TOTAL,
             ],
             array_map(fn (TotalResponseInterface $t): string => $t->getType(), $response)
         );

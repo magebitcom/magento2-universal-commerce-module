@@ -27,6 +27,7 @@ use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentOptionResponseInterfaceFactory
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentDestinationResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentDestinationResponseInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
+use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
 
 class QuoteToFulfillmentResponse
@@ -242,7 +243,7 @@ class QuoteToFulfillmentResponse
             // Create totals for the option
             $price = (float) $rate->getPrice();
             $total = $this->totalResponseFactory->create();
-            $total->setType(TotalResponseInterface::TYPE_FULFILLMENT);
+            $total->setType(TotalTypeInterface::TYPE_FULFILLMENT);
             $total->setAmount($this->priceConverter->convert($price, $currencyCode));
             $total->setDisplayText($rate->getMethodTitle() ?: $rate->getCarrierTitle());
 

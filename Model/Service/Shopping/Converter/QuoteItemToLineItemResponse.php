@@ -15,6 +15,7 @@ namespace Magebit\UniversalCommerce\Model\Service\Shopping\Converter;
 use Magebit\UcpSpec\Api\Shopping\Types\LineItemResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\ItemResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
+use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\LineItemResponseInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\ItemResponseInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
@@ -92,7 +93,7 @@ class QuoteItemToLineItemResponse
         $subtotal = (float) $quoteItem->getRowTotal();
         if ($subtotal > 0) {
             $total = $this->totalResponseFactory->create();
-            $total->setType(TotalResponseInterface::TYPE_SUBTOTAL);
+            $total->setType(TotalTypeInterface::TYPE_SUBTOTAL);
             $total->setAmount($this->priceConverter->convert($subtotal, $currencyCode));
             $total->setDisplayText('Subtotal');
             $totals[] = $total;
@@ -102,7 +103,7 @@ class QuoteItemToLineItemResponse
         $discountAmount = (float) $quoteItem->getDiscountAmount();
         if ($discountAmount > 0) {
             $total = $this->totalResponseFactory->create();
-            $total->setType(TotalResponseInterface::TYPE_ITEMS_DISCOUNT);
+            $total->setType(TotalTypeInterface::TYPE_ITEMS_DISCOUNT);
             $total->setAmount($this->priceConverter->convert($discountAmount, $currencyCode));
             $total->setDisplayText('Discount');
             $totals[] = $total;
@@ -111,7 +112,7 @@ class QuoteItemToLineItemResponse
         // Total (including tax)
         $rowTotal = (float) $quoteItem->getRowTotalInclTax();
         $total = $this->totalResponseFactory->create();
-        $total->setType(TotalResponseInterface::TYPE_TOTAL);
+        $total->setType(TotalTypeInterface::TYPE_TOTAL);
         $total->setAmount($this->priceConverter->convert($rowTotal, $currencyCode));
         $total->setDisplayText('Total');
         $totals[] = $total;
