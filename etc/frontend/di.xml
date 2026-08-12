@@ -21,7 +21,7 @@
         </arguments>
     </type>
 
-    <type name="Magebit\UniversalCommerce\Controller\Router">
+    <virtualType name="Magebit\UniversalCommerce\Controller\RouteProvider" type="Magebit\AgenticCore\Controller\StaticRouteProvider">
         <arguments>
             <argument name="routes" xsi:type="array">
                 <item name="discovery" xsi:type="array">
@@ -62,5 +62,12 @@
                 </item>
             </argument>
         </arguments>
-    </type>
+    </virtualType>
+
+    <virtualType name="Magebit\UniversalCommerce\Controller\Router" type="Magebit\AgenticCore\Controller\PatternRouter">
+        <arguments>
+            <argument name="routeProvider" xsi:type="object">Magebit\UniversalCommerce\Controller\RouteProvider</argument>
+            <argument name="moduleName" xsi:type="string">ucp</argument>
+        </arguments>
+    </virtualType>
 </config>
