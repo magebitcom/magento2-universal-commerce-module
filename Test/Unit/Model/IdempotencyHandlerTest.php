@@ -23,6 +23,7 @@ use Magebit\UniversalCommerce\Model\IdempotencyHandler;
 use Magento\Framework\App\Request\Http;
 use Magento\Framework\Controller\Result\Json as ResultJson;
 use Magento\Framework\Controller\Result\JsonFactory;
+use Magento\Framework\Encryption\EncryptorInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -105,8 +106,33 @@ class IdempotencyHandlerTest extends TestCase
             $this->coordinator,
             new RequestHasher(),
             $resultJsonFactory,
-            $messageFactory
+            $messageFactory,
+            $this->encryptor()
         );
+    }
+
+    /**
+     * Stands in for the framework's encryptor, including its `<key>:<cipher>:<payload>` envelope and
+     * its habit of returning garbage rather than failing when handed a value it never encrypted.
+     *
+     * @return EncryptorInterface
+     */
+    private function encryptor(): EncryptorInterface
+    {
+        $encryptor = $this->createMock(EncryptorInterface::class);
+        $encryptor->method('encrypt')->willReturnCallback(
+            static fn (?string $value): string => '0:3:' . base64_encode((string) $value)
+        );
+        $encryptor->method('decrypt')->willReturnCallback(
+            static function (?string $value): string {
+                $payload = substr((string) $value, strlen('0:3:'));
+                $decoded = base64_decode($payload, true);
+
+                return $decoded === false ? "\x00garbage" : $decoded;
+            }
+        );
+
+        return $encryptor;
     }
 
     /**
@@ -175,7 +201,7 @@ class IdempotencyHandlerTest extends TestCase
     public function testAStoredResponseIsReplayedVerbatim(): void
     {
         $record = $this->createMock(IdempotencyRecordInterface::class);
-        $record->method('getResponseBody')->willReturn('{"id":"abc"}');
+        $record->method('getResponseBody')->willReturn('0:3:' . base64_encode('{"id":"abc"}'));
         $record->method('getResponseStatus')->willReturn(201);
 
         $this->coordinator->method('claim')->willReturn(new ClaimResult(ClaimOutcome::Replay, $record));
@@ -186,13 +212,39 @@ class IdempotencyHandlerTest extends TestCase
     }
 
     /**
+     * Rows written before this module encrypted its bodies are still inside their TTL on an upgraded
+     * install. Decrypting one speculatively would replay binary garbage to the agent.
+     *
+     * @return void
+     */
+    public function testAPlaintextRowWrittenBeforeEncryptionStillReplays(): void
+    {
+        $record = $this->createMock(IdempotencyRecordInterface::class);
+        $record->method('getResponseBody')->willReturn('{"id":"legacy"}');
+        $record->method('getResponseStatus')->willReturn(200);
+
+        $this->coordinator->method('claim')->willReturn(new ClaimResult(ClaimOutcome::Replay, $record));
+
+        $this->handler->handle($this->request('POST', self::KEY));
+
+        $this->assertSame('{"id":"legacy"}', $this->written['json']);
+        $this->assertSame(200, $this->written['code']);
+    }
+
+    /**
      * @return void
      */
     public function testStoringAResponseHandsTheBodyToTheCoordinator(): void
     {
         $this->coordinator->expects($this->once())
             ->method('storeResponse')
-            ->with(IdempotencyHandler::SCOPE, self::KEY, $this->anything(), 201, '{"id":"abc"}')
+            ->with(
+                IdempotencyHandler::SCOPE,
+                self::KEY,
+                $this->anything(),
+                201,
+                '0:3:' . base64_encode('{"id":"abc"}')
+            )
             ->willReturn($this->createMock(IdempotencyRecordInterface::class));
 
         $this->handler->storeResponse(

@@ -22,6 +22,7 @@ use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
 use Magento\Framework\App\Request\Http;
 use Magento\Framework\Controller\Result\Json as ResultJson;
 use Magento\Framework\Controller\Result\JsonFactory;
+use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Framework\Exception\CouldNotSaveException;
 
 /**
@@ -47,16 +48,25 @@ class IdempotencyHandler
     private const RETRY_AFTER_SECONDS = 1;
 
     /**
+     * Envelope the framework's encryptor puts in front of every value it produces, as
+     * `<keyVersion>:<cipherVersion>:<base64>`. A stored response body is JSON, so it always starts
+     * with `{` or `[` and can never collide with this.
+     */
+    private const ENCRYPTED_PREFIX_PATTERN = '/^\d+:\d+:/';
+
+    /**
      * @param Coordinator $coordinator
      * @param RequestHasher $hasher
      * @param JsonFactory $resultJsonFactory
      * @param MessageInterfaceFactory $messageFactory
+     * @param EncryptorInterface $encryptor
      */
     public function __construct(
         protected readonly Coordinator $coordinator,
         protected readonly RequestHasher $hasher,
         protected readonly JsonFactory $resultJsonFactory,
-        protected readonly MessageInterfaceFactory $messageFactory
+        protected readonly MessageInterfaceFactory $messageFactory,
+        protected readonly EncryptorInterface $encryptor
     ) {
     }
 
@@ -107,7 +117,7 @@ class IdempotencyHandler
             $key,
             $this->hasher->hash($request),
             $status,
-            (string) json_encode($response)
+            $this->encryptor->encrypt((string) json_encode($response))
         );
     }
 
@@ -151,10 +161,28 @@ class IdempotencyHandler
     protected function makeReplayResponse(?IdempotencyRecordInterface $record): ResultJson
     {
         $result = $this->resultJsonFactory->create();
-        $result->setJsonData($record?->getResponseBody() ?? '');
+        $result->setJsonData($this->readBody($record?->getResponseBody() ?? ''));
         $result->setHttpResponseCode((int) $record?->getResponseStatus());
 
         return $result;
+    }
+
+    /**
+     * Rows written before this module encrypted its stored bodies are still inside their TTL on an
+     * upgraded install, and the encryptor hands back binary garbage rather than failing when given a
+     * value it never encrypted — so the envelope is checked instead of decrypting speculatively.
+     * The fallback stops being reachable one TTL window after deploy.
+     *
+     * @param string $body
+     * @return string
+     */
+    private function readBody(string $body): string
+    {
+        if ($body === '' || !preg_match(self::ENCRYPTED_PREFIX_PATTERN, $body)) {
+            return $body;
+        }
+
+        return (string) $this->encryptor->decrypt($body);
     }
 
     /**
