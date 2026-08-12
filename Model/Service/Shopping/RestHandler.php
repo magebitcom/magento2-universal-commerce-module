@@ -32,7 +32,10 @@ use Magebit\UniversalCommerce\Api\Data\CheckoutMetaInterfaceFactory;
 use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Webhook\OrderEventNotifier;
 use Magento\Quote\Model\Quote;
+use Magento\Sales\Api\OrderRepositoryInterface;
+use Magento\Sales\Model\Order;
 
 class RestHandler implements RestHandlerInterface
 {
@@ -46,6 +49,8 @@ class RestHandler implements RestHandlerInterface
      * @param CheckoutMetaInterfaceFactory $checkoutMetaFactory
      * @param Config $config
      * @param OrderLinkRepositoryInterface $orderLinkRepository
+     * @param OrderRepositoryInterface $orderRepository
+     * @param OrderEventNotifier $orderEventNotifier
      */
     public function __construct(
         protected readonly CheckoutDataProcessor $checkoutDataProcessor,
@@ -56,7 +61,9 @@ class RestHandler implements RestHandlerInterface
         protected readonly CheckoutMetaRepositoryInterface $checkoutMetaRepository,
         protected readonly CheckoutMetaInterfaceFactory $checkoutMetaFactory,
         protected readonly Config $config,
-        protected readonly OrderLinkRepositoryInterface $orderLinkRepository
+        protected readonly OrderLinkRepositoryInterface $orderLinkRepository,
+        protected readonly OrderRepositoryInterface $orderRepository,
+        protected readonly OrderEventNotifier $orderEventNotifier
     ) {
     }
 
@@ -158,6 +165,14 @@ class RestHandler implements RestHandlerInterface
         }
 
         $this->linkOrder($checkoutId, $orderId);
+
+        // Notified here rather than from sales_order_place_after, which fires before the order is saved
+        // and before the link exists — leaving the notifier nothing to resolve the session from.
+        $placedOrder = $this->orderRepository->get($orderId);
+
+        if ($placedOrder instanceof Order) {
+            $this->orderEventNotifier->notify($placedOrder);
+        }
 
         return $this->quoteToCheckoutResponse->convert($cart, $checkoutId);
     }

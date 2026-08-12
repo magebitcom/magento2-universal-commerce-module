@@ -21,6 +21,9 @@ use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
 use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
 use Magebit\UniversalCommerce\Model\Timestamp;
+use Magento\Framework\Api\SearchCriteriaBuilder;
+use Magento\Sales\Api\CreditmemoRepositoryInterface;
+use Magento\Sales\Api\Data\CreditmemoInterface;
 use Magento\Sales\Model\Order;
 use Magento\Sales\Model\Order\Creditmemo;
 
@@ -43,13 +46,17 @@ class OrderToAdjustments
      * @param TotalResponseInterfaceFactory $totalFactory
      * @param MinorUnits $minorUnits
      * @param Timestamp $timestamp
+     * @param CreditmemoRepositoryInterface $creditmemoRepository
+     * @param SearchCriteriaBuilder $searchCriteriaBuilder
      */
     public function __construct(
         private readonly AdjustmentInterfaceFactory $adjustmentFactory,
         private readonly AdjustmentLineItemsItemInterfaceFactory $lineItemFactory,
         private readonly TotalResponseInterfaceFactory $totalFactory,
         private readonly MinorUnits $minorUnits,
-        private readonly Timestamp $timestamp
+        private readonly Timestamp $timestamp,
+        private readonly CreditmemoRepositoryInterface $creditmemoRepository,
+        private readonly SearchCriteriaBuilder $searchCriteriaBuilder
     ) {
     }
 
@@ -77,21 +84,10 @@ class OrderToAdjustments
      */
     public function convertRefunds(Order $order, array $lineItemIds): array
     {
-        $creditmemos = $order->getCreditmemosCollection();
         $adjustments = [];
-
-        if ($creditmemos === false) {
-            return $adjustments;
-        }
-
         $currencyCode = (string) $order->getOrderCurrencyCode();
 
-        foreach ($creditmemos as $creditmemo) {
-            // The collection is not typed, so nothing but the check guarantees what came out of it.
-            if (!$creditmemo instanceof Creditmemo) {
-                continue;
-            }
-
+        foreach ($this->creditmemosOf($order) as $creditmemo) {
             $occurredAt = $this->timestamp->toRfc3339($creditmemo->getCreatedAt());
 
             if ($occurredAt === null) {
@@ -170,6 +166,36 @@ class OrderToAdjustments
     }
 
     /**
+     * Read through the repository rather than through the order's own collection, which an order instance
+     * loaded before the memo existed caches empty.
+     *
+     * @param Order $order
+     * @return Creditmemo[]
+     */
+    private function creditmemosOf(Order $order): array
+    {
+        $entityId = $order->getEntityId();
+
+        if (!is_numeric($entityId)) {
+            return [];
+        }
+
+        $criteria = $this->searchCriteriaBuilder
+            ->addFilter(CreditmemoInterface::ORDER_ID, (int) $entityId)
+            ->create();
+
+        $creditmemos = [];
+
+        foreach ($this->creditmemoRepository->getList($criteria)->getItems() as $creditmemo) {
+            if ($creditmemo instanceof Creditmemo) {
+                $creditmemos[] = $creditmemo;
+            }
+        }
+
+        return $creditmemos;
+    }
+
+    /**
      * @param Creditmemo $creditmemo
      * @param array<int, string> $lineItemIds
      * @return AdjustmentLineItemsItemInterface[]
@@ -178,7 +204,7 @@ class OrderToAdjustments
     {
         $lineItems = [];
 
-        foreach ($creditmemo->getAllItems() as $creditmemoItem) {
+        foreach ($creditmemo->getItems() as $creditmemoItem) {
             $orderItemId = (int) $creditmemoItem->getOrderItemId();
             $quantity = (int) round((float) $creditmemoItem->getQty());
 

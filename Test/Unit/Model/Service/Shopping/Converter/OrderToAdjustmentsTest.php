@@ -22,6 +22,10 @@ use Magebit\UcpSpec\Data\Shopping\Types\AdjustmentLineItemsItem;
 use Magebit\UcpSpec\Data\Shopping\Types\TotalResponse;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\OrderToAdjustments;
 use Magebit\UniversalCommerce\Model\Timestamp;
+use Magento\Framework\Api\SearchCriteria;
+use Magento\Framework\Api\SearchCriteriaBuilder;
+use Magento\Sales\Api\CreditmemoRepositoryInterface;
+use Magento\Sales\Api\Data\CreditmemoSearchResultInterface;
 use Magento\Sales\Model\Order;
 use Magento\Sales\Model\Order\Creditmemo;
 use PHPUnit\Framework\TestCase;
@@ -30,13 +34,11 @@ class OrderToAdjustmentsTest extends TestCase
 {
     private const LINE_ITEM_IDS = [11 => 'line-a', 12 => 'line-b'];
 
-    /** @var OrderToAdjustments */
-    private OrderToAdjustments $converter;
-
     /**
-     * @return void
+     * @param Creditmemo[] $creditmemos
+     * @return OrderToAdjustments
      */
-    protected function setUp(): void
+    private function converterFor(array $creditmemos): OrderToAdjustments
     {
         $adjustmentFactory = $this->createMock(AdjustmentInterfaceFactory::class);
         $adjustmentFactory->method('create')->willReturnCallback(fn (): Adjustment => new Adjustment());
@@ -48,12 +50,24 @@ class OrderToAdjustmentsTest extends TestCase
         $totalFactory = $this->createMock(TotalResponseInterfaceFactory::class);
         $totalFactory->method('create')->willReturnCallback(fn (): TotalResponse => new TotalResponse());
 
-        $this->converter = new OrderToAdjustments(
+        $searchResult = $this->createMock(CreditmemoSearchResultInterface::class);
+        $searchResult->method('getItems')->willReturn($creditmemos);
+
+        $repository = $this->createMock(CreditmemoRepositoryInterface::class);
+        $repository->method('getList')->willReturn($searchResult);
+
+        $builder = $this->createMock(SearchCriteriaBuilder::class);
+        $builder->method('addFilter')->willReturnSelf();
+        $builder->method('create')->willReturn($this->createMock(SearchCriteria::class));
+
+        return new OrderToAdjustments(
             $adjustmentFactory,
             $lineItemFactory,
             $totalFactory,
             new MinorUnits(),
-            new Timestamp()
+            new Timestamp(),
+            $repository,
+            $builder
         );
     }
 
@@ -154,27 +168,26 @@ class OrderToAdjustmentsTest extends TestCase
      */
     private function convert(array $creditmemos = [], bool $isCanceled = false): array
     {
-        return $this->converter->convert($this->order($creditmemos, $isCanceled), self::LINE_ITEM_IDS);
+        return $this->converterFor($creditmemos)->convert($this->order($isCanceled), self::LINE_ITEM_IDS);
     }
 
     /**
-     * @param Creditmemo[] $creditmemos
      * @param bool $isCanceled
      * @return Order
      */
-    private function order(array $creditmemos, bool $isCanceled): Order
+    private function order(bool $isCanceled): Order
     {
         $order = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
             ->onlyMethods([
-                'getCreditmemosCollection',
+                'getEntityId',
                 'isCanceled',
                 'getOrderCurrencyCode',
                 'getIncrementId',
                 'getUpdatedAt',
             ])
             ->getMock();
-        $order->method('getCreditmemosCollection')->willReturn($creditmemos === [] ? false : $creditmemos);
+        $order->method('getEntityId')->willReturn(7);
         $order->method('isCanceled')->willReturn($isCanceled);
         $order->method('getOrderCurrencyCode')->willReturn('USD');
         $order->method('getIncrementId')->willReturn('000000123');
@@ -206,13 +219,13 @@ class OrderToAdjustmentsTest extends TestCase
 
         $creditmemo = $this->getMockBuilder(Creditmemo::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['getIncrementId', 'getEntityId', 'getCreatedAt', 'getGrandTotal', 'getAllItems'])
+            ->onlyMethods(['getIncrementId', 'getEntityId', 'getCreatedAt', 'getGrandTotal', 'getItems'])
             ->getMock();
         $creditmemo->method('getIncrementId')->willReturn($incrementId);
         $creditmemo->method('getEntityId')->willReturn(7);
         $creditmemo->method('getCreatedAt')->willReturn('2026-03-04 09:30:00');
         $creditmemo->method('getGrandTotal')->willReturn($grandTotal);
-        $creditmemo->method('getAllItems')->willReturn($items);
+        $creditmemo->method('getItems')->willReturn($items);
 
         return $creditmemo;
     }

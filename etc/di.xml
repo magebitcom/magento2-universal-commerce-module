@@ -92,6 +92,12 @@
         </arguments>
     </type>
 
+    <type name="Magebit\UniversalCommerce\Model\Webhook\OrderEventNotifier">
+        <arguments>
+            <argument name="dispatcher" xsi:type="object">Magebit\UniversalCommerce\Model\Webhook\Dispatcher</argument>
+        </arguments>
+    </type>
+
     <!-- Services -->
     <preference for="Magebit\UcpSpec\Api\ServiceBusinessSchemaInterface" type="Magebit\UcpSpec\Data\ServiceBusinessSchema" />
 

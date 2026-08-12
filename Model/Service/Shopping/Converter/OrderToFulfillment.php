@@ -24,6 +24,9 @@ use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentEventLineItemsItemInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentEventLineItemsItemInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\PostalAddressInterface;
 use Magebit\UniversalCommerce\Model\Timestamp;
+use Magento\Framework\Api\SearchCriteriaBuilder;
+use Magento\Sales\Api\Data\ShipmentInterface;
+use Magento\Sales\Api\ShipmentRepositoryInterface;
 use Magento\Sales\Model\Order;
 use Magento\Sales\Model\Order\Shipment;
 use Magento\Sales\Model\Order\Shipment\Track;
@@ -60,6 +63,8 @@ class OrderToFulfillment
      * @param OrderAddressToPostalAddress $addressConverter
      * @param ShippingHelper $shippingHelper
      * @param Timestamp $timestamp
+     * @param ShipmentRepositoryInterface $shipmentRepository
+     * @param SearchCriteriaBuilder $searchCriteriaBuilder
      */
     public function __construct(
         private readonly OrderResponseFulfillmentInterfaceFactory $fulfillmentFactory,
@@ -69,7 +74,9 @@ class OrderToFulfillment
         private readonly FulfillmentEventLineItemsItemInterfaceFactory $eventLineItemFactory,
         private readonly OrderAddressToPostalAddress $addressConverter,
         private readonly ShippingHelper $shippingHelper,
-        private readonly Timestamp $timestamp
+        private readonly Timestamp $timestamp,
+        private readonly ShipmentRepositoryInterface $shipmentRepository,
+        private readonly SearchCriteriaBuilder $searchCriteriaBuilder
     ) {
     }
 
@@ -155,18 +162,9 @@ class OrderToFulfillment
      */
     public function convertEvents(Order $order, array $lineItemIds): array
     {
-        $shipments = $order->getShipmentsCollection();
         $events = [];
 
-        if ($shipments === false) {
-            return $events;
-        }
-
-        foreach ($shipments as $shipment) {
-            // The collection is not typed, so nothing but the check guarantees what came out of it.
-            if (!$shipment instanceof Shipment) {
-                continue;
-            }
+        foreach ($this->shipmentsOf($order) as $shipment) {
 
             $lineItems = $this->eventLineItems($shipment, $lineItemIds);
             $occurredAt = $this->timestamp->toRfc3339($shipment->getCreatedAt());
@@ -212,6 +210,37 @@ class OrderToFulfillment
     }
 
     /**
+     * Read through the repository rather than through the order's own collection: an order instance that
+     * was loaded before a shipment existed caches the empty result, and an observer is handed exactly
+     * such an instance.
+     *
+     * @param Order $order
+     * @return Shipment[]
+     */
+    private function shipmentsOf(Order $order): array
+    {
+        $entityId = $order->getEntityId();
+
+        if (!is_numeric($entityId)) {
+            return [];
+        }
+
+        $criteria = $this->searchCriteriaBuilder
+            ->addFilter(ShipmentInterface::ORDER_ID, (int) $entityId)
+            ->create();
+
+        $shipments = [];
+
+        foreach ($this->shipmentRepository->getList($criteria)->getItems() as $shipment) {
+            if ($shipment instanceof Shipment) {
+                $shipments[] = $shipment;
+            }
+        }
+
+        return $shipments;
+    }
+
+    /**
      * @param Shipment $shipment
      * @param array<int, string> $lineItemIds
      * @return FulfillmentEventLineItemsItemInterface[]
@@ -220,11 +249,7 @@ class OrderToFulfillment
     {
         $lineItems = [];
 
-        foreach ($shipment->getAllItems() as $shipmentItem) {
-            if (!$shipmentItem instanceof Shipment\Item) {
-                continue;
-            }
-
+        foreach ($shipment->getItems() as $shipmentItem) {
             $orderItemId = (int) $shipmentItem->getOrderItemId();
             $quantity = (int) round((float) $shipmentItem->getQty());
 

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * This file is part of the Magebit_UniversalCommerce package.
+ *
+ * @copyright Copyright (c) 2026 Magebit, Ltd. (https://magebit.com/)
+ * @author    Magebit <info@magebit.com>
+ * @license   MIT
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <event name="sales_order_shipment_save_commit_after">
+        <observer name="universal_commerce_order_shipped" instance="Magebit\UniversalCommerce\Observer\EnqueueOnShipment"/>
+    </event>
+    <event name="sales_order_creditmemo_save_commit_after">
+        <observer name="universal_commerce_order_refunded" instance="Magebit\UniversalCommerce\Observer\EnqueueOnCreditmemo"/>
+    </event>
+    <event name="order_cancel_after">
+        <observer name="universal_commerce_order_canceled" instance="Magebit\UniversalCommerce\Observer\EnqueueOnCancel"/>
+    </event>
+</config>

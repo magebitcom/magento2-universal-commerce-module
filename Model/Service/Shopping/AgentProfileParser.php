@@ -24,6 +24,11 @@ use Psr\Log\LoggerInterface;
  */
 class AgentProfileParser
 {
+    /**
+     * Capability whose platform-side config carries the URL order events are sent to.
+     */
+    private const ORDER_CAPABILITY = 'dev.ucp.shopping.order';
+
     private const CACHE_PREFIX = 'ucp_agent_profile_';
     private const CACHE_LIFETIME = 3600; // 1 hour
     private const CACHE_TAG = 'ucp_agent_profile';
@@ -261,19 +266,23 @@ class AgentProfileParser
      */
     private function extractWebhookUrl(array $profileData): ?string
     {
-        if (!isset($profileData['ucp']['capabilities']) || !is_array($profileData['ucp']['capabilities'])) {
+        $ucp = $profileData['ucp'] ?? null;
+        $capabilities = is_array($ucp) ? ($ucp['capabilities'] ?? null) : null;
+        $entries = is_array($capabilities) ? ($capabilities[self::ORDER_CAPABILITY] ?? null) : null;
+
+        if (!is_array($entries)) {
             return null;
         }
 
-        foreach ($profileData['ucp']['capabilities'] as $capability) {
-            if (!is_array($capability)) {
-                continue;
-            }
+        // The registry is keyed by reverse-domain name and each value is a list of entries, so the name
+        // is the key and no entry carries one. A platform may declare several entries for one capability.
+        foreach ($entries as $entry) {
+            if (is_array($entry) && isset($entry['config']['webhook_url'])) {
+                $url = $entry['config']['webhook_url'];
 
-            if (($capability['name'] ?? null) === 'dev.ucp.shopping.order' &&
-                isset($capability['config']['webhook_url'])
-            ) {
-                return $capability['config']['webhook_url'];
+                if (is_string($url) && $url !== '') {
+                    return $url;
+                }
             }
         }
 

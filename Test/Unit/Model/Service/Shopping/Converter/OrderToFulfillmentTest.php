@@ -33,6 +33,10 @@ use Magento\Sales\Model\Order;
 use Magento\Sales\Model\Order\Address as OrderAddress;
 use Magento\Sales\Model\Order\Shipment;
 use Magento\Sales\Model\Order\Shipment\Track;
+use Magento\Framework\Api\SearchCriteria;
+use Magento\Framework\Api\SearchCriteriaBuilder;
+use Magento\Sales\Api\Data\ShipmentSearchResultInterface;
+use Magento\Sales\Api\ShipmentRepositoryInterface;
 use Magento\Shipping\Helper\Data as ShippingHelper;
 use PHPUnit\Framework\TestCase;
 
@@ -41,13 +45,11 @@ class OrderToFulfillmentTest extends TestCase
     private const LINE_ITEM_IDS = [11 => 'line-a', 12 => 'line-b'];
     private const ORDERED = [11 => 2, 12 => 1];
 
-    /** @var OrderToFulfillment */
-    private OrderToFulfillment $converter;
-
     /**
-     * @return void
+     * @param Shipment[] $shipments
+     * @return OrderToFulfillment
      */
-    protected function setUp(): void
+    private function converterFor(array $shipments): OrderToFulfillment
     {
         $fulfillmentFactory = $this->createMock(OrderResponseFulfillmentInterfaceFactory::class);
         $fulfillmentFactory->method('create')
@@ -74,7 +76,17 @@ class OrderToFulfillmentTest extends TestCase
         $shippingHelper->method('getTrackingPopupUrlBySalesModel')
             ->willReturn('https://merchant.test/shipping/tracking/popup?hash=abc');
 
-        $this->converter = new OrderToFulfillment(
+        $searchResult = $this->createMock(ShipmentSearchResultInterface::class);
+        $searchResult->method('getItems')->willReturn($shipments);
+
+        $repository = $this->createMock(ShipmentRepositoryInterface::class);
+        $repository->method('getList')->willReturn($searchResult);
+
+        $builder = $this->createMock(SearchCriteriaBuilder::class);
+        $builder->method('addFilter')->willReturnSelf();
+        $builder->method('create')->willReturn($this->createMock(SearchCriteria::class));
+
+        return new OrderToFulfillment(
             $fulfillmentFactory,
             $expectationFactory,
             $expectationLineItemFactory,
@@ -82,7 +94,9 @@ class OrderToFulfillmentTest extends TestCase
             $eventLineItemFactory,
             new OrderAddressToPostalAddress($postalAddressFactory),
             $shippingHelper,
-            new Timestamp()
+            new Timestamp(),
+            $repository,
+            $builder
         );
     }
 
@@ -214,8 +228,8 @@ class OrderToFulfillmentTest extends TestCase
         string $shippingMethod = 'flatrate_flatrate',
         array $shipments = []
     ): mixed {
-        return $this->converter->convert(
-            $this->order($isVirtual, $shippingMethod, $shipments),
+        return $this->converterFor($shipments)->convert(
+            $this->order($isVirtual, $shippingMethod),
             self::LINE_ITEM_IDS,
             self::ORDERED
         );
@@ -224,28 +238,27 @@ class OrderToFulfillmentTest extends TestCase
     /**
      * @param bool $isVirtual
      * @param string $shippingMethod
-     * @param Shipment[] $shipments
      * @return Order
      */
-    private function order(bool $isVirtual, string $shippingMethod, array $shipments): Order
+    private function order(bool $isVirtual, string $shippingMethod): Order
     {
         $order = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
             ->onlyMethods([
+                'getEntityId',
                 'getIsVirtual',
                 'getShippingMethod',
                 'getShippingAddress',
                 'getBillingAddress',
                 'getShippingDescription',
-                'getShipmentsCollection',
             ])
             ->getMock();
+        $order->method('getEntityId')->willReturn(9);
         $order->method('getIsVirtual')->willReturn($isVirtual);
         $order->method('getShippingMethod')->willReturn($shippingMethod);
         $order->method('getShippingAddress')->willReturn($isVirtual ? null : $this->address('Rigas iela 1'));
         $order->method('getBillingAddress')->willReturn($this->address('Brivibas iela 2'));
         $order->method('getShippingDescription')->willReturn('Flat Rate - Fixed');
-        $order->method('getShipmentsCollection')->willReturn($shipments === [] ? false : $shipments);
 
         return $order;
     }
@@ -318,12 +331,12 @@ class OrderToFulfillmentTest extends TestCase
 
         $shipment = $this->getMockBuilder(Shipment::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['getIncrementId', 'getEntityId', 'getCreatedAt', 'getAllItems', 'getAllTracks'])
+            ->onlyMethods(['getIncrementId', 'getEntityId', 'getCreatedAt', 'getItems', 'getAllTracks'])
             ->getMock();
         $shipment->method('getIncrementId')->willReturn($incrementId);
         $shipment->method('getEntityId')->willReturn(1);
         $shipment->method('getCreatedAt')->willReturn('2026-02-01 10:00:00');
-        $shipment->method('getAllItems')->willReturn($items);
+        $shipment->method('getItems')->willReturn($items);
         $shipment->method('getAllTracks')->willReturn($tracks);
 
         return $shipment;
