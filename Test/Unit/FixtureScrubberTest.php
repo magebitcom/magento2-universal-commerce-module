@@ -148,6 +148,20 @@ class FixtureScrubberTest extends TestCase
         $this->assertStringNotContainsString('c2hpcF9pZDozOmNlNmMwM2M', $result['tracking_url']);
     }
 
+    /**
+     * Magento percent-encodes the base64 padding, so the escapes belong to the hash.
+     *
+     * @return void
+     */
+    public function testReplacesAPercentEncodedTrackingUrlHash(): void
+    {
+        $result = $this->scrubber->scrub([
+            'tracking_url' => 'https://shop.local/shipping/tracking/popup?hash=c2hpcF9pZDoxMQ%7E%7E',
+        ]);
+
+        $this->assertStringEndsWith('?hash=' . FixtureScrubber::NONCE, $result['tracking_url']);
+    }
+
     public function testLeavesSkuLikeIdsAlone(): void
     {
         $result = $this->scrubber->scrub(['item' => ['id' => '24-MB04']]);

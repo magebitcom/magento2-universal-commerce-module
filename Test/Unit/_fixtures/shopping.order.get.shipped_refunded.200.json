@@ -18,6 +18,14 @@
                     "extends": "dev.ucp.shopping.checkout"
                 }
             ],
+            "dev.ucp.shopping.fulfillment": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/fulfillment",
+                    "schema": "https://ucp.dev/schemas/shopping/fulfillment.json",
+                    "extends": "dev.ucp.shopping.checkout"
+                }
+            ],
             "dev.ucp.shopping.order": [
                 {
                     "version": "2026-04-08",
@@ -27,12 +35,12 @@
             ]
         }
     },
-    "id": "id-58399ca2",
+    "id": "id-8f6482bf",
     "checkout_id": "checkout_session_placeholder_0001",
     "permalink_url": "https://merchant.example/sales/order/view/order_id/1000",
     "line_items": [
         {
-            "id": "id-e5b861a6",
+            "id": "id-d80eae6e",
             "item": {
                 "id": "ucp-conformance-simple",
                 "title": "UCP Conformance Simple Product",
@@ -65,7 +73,7 @@
                 "id": "package",
                 "line_items": [
                     {
-                        "id": "id-e5b861a6",
+                        "id": "id-d80eae6e",
                         "quantity": 2
                     }
                 ],
@@ -85,17 +93,17 @@
         ],
         "events": [
             {
-                "id": "id-9ab87912",
+                "id": "id-f2a2fd58",
                 "occurred_at": "2026-01-01T00:00:00+00:00",
                 "type": "shipped",
                 "line_items": [
                     {
-                        "id": "id-e5b861a6",
+                        "id": "id-d80eae6e",
                         "quantity": 2
                     }
                 ],
-                "tracking_number": "1Z999AA10123456784",
-                "carrier": "Federal Express",
+                "tracking_number": "UCPTRACK000000135",
+                "carrier": "Flat Rate",
                 "tracking_url": "https://merchant.example/shipping/tracking/popup?hash=nonce-placeholder"
             }
         ]
@@ -120,13 +128,13 @@
     ],
     "adjustments": [
         {
-            "id": "id-833e9eac",
+            "id": "id-348d5283",
             "type": "refund",
             "occurred_at": "2026-01-01T00:00:00+00:00",
             "status": "completed",
             "line_items": [
                 {
-                    "id": "id-e5b861a6",
+                    "id": "id-d80eae6e",
                     "quantity": -1
                 }
             ],

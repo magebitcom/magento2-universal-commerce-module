@@ -28,6 +28,14 @@
                     "extends": "dev.ucp.shopping.checkout"
                 }
             ],
+            "dev.ucp.shopping.fulfillment": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/fulfillment",
+                    "schema": "https://ucp.dev/schemas/shopping/fulfillment.json",
+                    "extends": "dev.ucp.shopping.checkout"
+                }
+            ],
             "dev.ucp.shopping.order": [
                 {
                     "version": "2026-04-08",

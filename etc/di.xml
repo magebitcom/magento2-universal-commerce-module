@@ -25,6 +25,7 @@
             <argument name="capabilities" xsi:type="array">
                 <item name="dev.ucp.shopping.checkout" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CheckoutCapability</item>
                 <item name="dev.ucp.shopping.discount" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\DiscountCapability</item>
+                <item name="dev.ucp.shopping.fulfillment" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\FulfillmentCapability</item>
                 <item name="dev.ucp.shopping.order" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\OrderCapability</item>
             </argument>
         </arguments>

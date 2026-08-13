@@ -49,8 +49,9 @@ class FixtureScrubber
     private const PATTERNS = [
         // Media cache hash: rotates whenever image config changes.
         ['~/media/catalog/product/cache/[0-9a-f]{32}/~', '/media/catalog/product/cache/' . self::CACHE_HASH . '/'],
-        // Shipment tracking URL hash: derived from the local shipment row.
-        ['~([?&]hash)=[A-Za-z0-9+/=_-]+~', '$1=' . self::NONCE],
+        // Shipment tracking URL hash. The base64 arrives percent-encoded, so the escapes count as part
+        // of the hash — without them a tail of the local value survives.
+        ['~([?&]hash)=(?:[A-Za-z0-9+/=_-]|%[0-9A-Fa-f]{2})+~', '$1=' . self::NONCE],
         // Static content deploy version: changes on every setup:static-content:deploy.
         ['~/static/version\d+/~', '/static/' . self::STATIC_VERSION . '/'],
         // ISO-8601 / RFC 3339 timestamps.

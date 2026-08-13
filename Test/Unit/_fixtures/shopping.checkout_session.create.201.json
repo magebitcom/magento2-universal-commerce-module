@@ -2,7 +2,7 @@
     "id": "checkout_session_placeholder_0001",
     "line_items": [
         {
-            "id": "id-28dae7c8",
+            "id": "id-36ebe205",
             "quantity": 2,
             "item": {
                 "id": "ucp-conformance-simple",
@@ -45,6 +45,14 @@
                     "version": "2026-04-08",
                     "spec": "https://ucp.dev/specification/discount",
                     "schema": "https://ucp.dev/schemas/shopping/discount.json",
+                    "extends": "dev.ucp.shopping.checkout"
+                }
+            ],
+            "dev.ucp.shopping.fulfillment": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/fulfillment",
+                    "schema": "https://ucp.dev/schemas/shopping/fulfillment.json",
                     "extends": "dev.ucp.shopping.checkout"
                 }
             ],
@@ -91,7 +99,7 @@
                 "id": "shipping",
                 "type": "shipping",
                 "line_item_ids": [
-                    "id-28dae7c8"
+                    "id-36ebe205"
                 ],
                 "destinations": [
                     {
@@ -111,7 +119,7 @@
                     {
                         "id": "package",
                         "line_item_ids": [
-                            "id-28dae7c8"
+                            "id-36ebe205"
                         ],
                         "options": [
                             {
@@ -147,7 +155,7 @@
             }
         ]
     },
-    "continue_url": "https://merchant.example/ucp/checkout/resume/id/jtG3sMX81Q7DDlM3hBhE6jCiu0xhgXLy",
+    "continue_url": "https://merchant.example/ucp/checkout/resume/id/gyqnDxUCnKrhSBAGEUefgzLNbOP2TiAU",
     "messages": [],
     "status": "ready_for_complete"
 }

@@ -29,6 +29,14 @@ class ShoppingSchemaConformanceTest extends TestCase
     private const SHIPPED_ORDER_FIXTURE = 'shopping.order.get.shipped_refunded.200.json';
 
     /**
+     * Response fields the spec puts in an extension, mapped to the capability that declares them.
+     */
+    private const EXTENSION_FIELDS = [
+        'fulfillment' => 'dev.ucp.shopping.fulfillment',
+        'discounts' => 'dev.ucp.shopping.discount',
+    ];
+
+    /**
      * @return array<string, array{0: string}>
      */
     public static function checkoutFixtureProvider(): array
@@ -185,6 +193,47 @@ class ShoppingSchemaConformanceTest extends TestCase
         $this->assertNotEmpty($order['fulfillment']['expectations']);
         $this->assertSame([], $order['fulfillment']['events']);
         $this->assertSame('processing', $order['line_items'][0]['status']);
+    }
+
+    /**
+     * An agent only sends for capabilities it can discover, so a populated extension must be advertised.
+     *
+     * @dataProvider checkoutFixtureProvider
+     * @param string $fixture
+     * @return void
+     */
+    public function testEveryPopulatedExtensionIsAdvertised(string $fixture): void
+    {
+        $payload = self::loadFixture($fixture);
+        $advertised = array_keys($payload['ucp']['capabilities']);
+
+        foreach (self::EXTENSION_FIELDS as $field => $capability) {
+            if (($payload[$field] ?? null) === null) {
+                continue;
+            }
+
+            $this->assertContains($capability, $advertised, sprintf('"%s" is populated', $field));
+        }
+    }
+
+    /**
+     * An extension has to name the capability it extends; a root capability has to leave it out.
+     *
+     * @return void
+     */
+    public function testExtensionsDeclareWhatTheyExtend(): void
+    {
+        $capabilities = self::loadFixture('shopping.checkout_session.get.200.json')['ucp']['capabilities'];
+
+        foreach (self::EXTENSION_FIELDS as $capability) {
+            $this->assertSame(
+                'dev.ucp.shopping.checkout',
+                $capabilities[$capability][0]['extends'] ?? null,
+                sprintf('"%s" declares its parent', $capability)
+            );
+        }
+
+        $this->assertArrayNotHasKey('extends', $capabilities['dev.ucp.shopping.checkout'][0]);
     }
 
     /**
