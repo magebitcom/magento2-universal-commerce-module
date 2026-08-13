@@ -10,10 +10,7 @@
                 <ttl_hours>24</ttl_hours>
             </idempotency>
             <webhooks>
-                <!-- Off until the merchant has agreed an authentication scheme with the agent platform:
-                     the spec offers message signatures or a platform-allocated API key, and this module
-                     sends neither yet. -->
-                <enabled>0</enabled>
+                <enabled>1</enabled>
             </webhooks>
             <checkout>
                 <payment_method>checkmo</payment_method>

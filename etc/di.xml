@@ -56,6 +56,7 @@
     <!-- Specification implementations -->
     <!-- Discovery -->
     <preference for="Magebit\UcpSpec\Api\Discovery\ProfileSchemaInterface" type="Magebit\UcpSpec\Data\Discovery\ProfileSchema" />
+    <preference for="Magebit\UcpSpec\Api\Discovery\ProfileSchemaSigningKeyInterface" type="Magebit\UcpSpec\Data\Discovery\ProfileSchemaSigningKey" />
 
     <!-- Schemas -->
     <preference for="Magebit\UcpSpec\Api\UcpBusinessSchemaInterface" type="Magebit\UcpSpec\Data\UcpBusinessSchema" />

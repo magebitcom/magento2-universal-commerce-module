@@ -34,7 +34,7 @@
                 <field id="enabled" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Send Order Events</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
-                    <comment>Posts order lifecycle events to the URL the agent publishes in its own profile. Leave disabled until an authentication scheme has been agreed with the agent platform: the protocol offers HTTP message signatures or a platform-allocated API key, and neither is configured yet, so events would arrive unauthenticated.</comment>
+                    <comment>Posts order lifecycle events to the URL the agent publishes in its own profile. Each delivery is signed with this store's key, which is published at /.well-known/ucp so the agent can verify it. The key is created automatically on first use.</comment>
                 </field>
             </group>
             <group id="links" translate="label" type="text" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
