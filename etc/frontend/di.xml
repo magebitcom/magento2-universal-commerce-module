@@ -60,6 +60,30 @@
                     <item name="controller" xsi:type="string">service</item>
                     <item name="action" xsi:type="string">shopping_complete</item>
                 </item>
+                <item name="shopping.create.cart" xsi:type="array">
+                    <item name="path" xsi:type="string">ucp/shopping/carts</item>
+                    <item name="method" xsi:type="string">POST</item>
+                    <item name="controller" xsi:type="string">service</item>
+                    <item name="action" xsi:type="string">shopping_cart_create</item>
+                </item>
+                <item name="shopping.get.cart" xsi:type="array">
+                    <item name="path" xsi:type="string">ucp/shopping/carts/{cart_id}</item>
+                    <item name="method" xsi:type="string">GET</item>
+                    <item name="controller" xsi:type="string">service</item>
+                    <item name="action" xsi:type="string">shopping_cart_get</item>
+                </item>
+                <item name="shopping.update.cart" xsi:type="array">
+                    <item name="path" xsi:type="string">ucp/shopping/carts/{cart_id}</item>
+                    <item name="method" xsi:type="string">PUT</item>
+                    <item name="controller" xsi:type="string">service</item>
+                    <item name="action" xsi:type="string">shopping_cart_update</item>
+                </item>
+                <item name="shopping.cancel.cart" xsi:type="array">
+                    <item name="path" xsi:type="string">ucp/shopping/carts/{cart_id}/cancel</item>
+                    <item name="method" xsi:type="string">POST</item>
+                    <item name="controller" xsi:type="string">service</item>
+                    <item name="action" xsi:type="string">shopping_cart_cancel</item>
+                </item>
                 <item name="shopping.get.order" xsi:type="array">
                     <item name="path" xsi:type="string">ucp/shopping/orders/{order_id}</item>
                     <item name="method" xsi:type="string">GET</item>

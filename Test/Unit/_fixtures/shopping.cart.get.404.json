@@ -1,0 +1,14 @@
+{
+    "ucp": {
+        "version": "2026-04-08",
+        "status": "error"
+    },
+    "messages": [
+        {
+            "type": "error",
+            "code": "not_found",
+            "content": "Cart not found: 6svLdhMURfwdeTUHSkixD8a5ZMnySHHs.",
+            "severity": "recoverable"
+        }
+    ]
+}

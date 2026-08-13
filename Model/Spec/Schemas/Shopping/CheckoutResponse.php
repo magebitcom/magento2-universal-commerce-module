@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Spec\Schemas\Shopping;
 
+use Magebit\UcpSpec\Api\Shopping\CartResponseCheckoutInterface;
 use Magebit\UcpSpec\Api\Shopping\DiscountResponseCheckoutInterface;
 use Magebit\UcpSpec\Api\Shopping\DiscountResponseDiscountsObjectInterface;
 use Magebit\UcpSpec\Data\Shopping\FulfillmentResponseCheckout;
@@ -41,5 +42,24 @@ class CheckoutResponse extends FulfillmentResponseCheckout implements CheckoutRe
     public function setDiscounts(?DiscountResponseDiscountsObjectInterface $discounts): self
     {
         return $this->set(DiscountResponseCheckoutInterface::KEY_DISCOUNTS, $discounts);
+    }
+
+    /**
+     * @return string|null
+     */
+    public function getCartId(): ?string
+    {
+        return $this->stringOrNull(CartResponseCheckoutInterface::KEY_CART_ID);
+    }
+
+    /**
+     * @param string|null $cartId
+     * @return CheckoutResponseInterface
+     */
+    public function setCartId(?string $cartId): CheckoutResponseInterface
+    {
+        $this->set(CartResponseCheckoutInterface::KEY_CART_ID, $cartId);
+
+        return $this;
     }
 }

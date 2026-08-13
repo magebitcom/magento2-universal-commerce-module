@@ -219,6 +219,17 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
     }
 
     /**
+     * @return ResultJson
+     */
+    protected function missingCartId(): ResultJson
+    {
+        return $this->makeErrorResponse(
+            [$this->errorMessage('invalid_request', 'A cart identifier is required.')],
+            400
+        );
+    }
+
+    /**
      * The spec requires type, code, content and severity on every error, so they are set here rather
      * than at each construction site.
      *

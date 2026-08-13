@@ -24,6 +24,7 @@ class ShoppingSchemaConformanceTest extends TestCase
 
     private const CHECKOUT_SCHEMA = 'shopping/checkout_resp.json';
     private const ERROR_SCHEMA = 'shopping/types/error_response.json';
+    private const CART_SCHEMA = 'shopping/cart_resp.json';
     private const ORDER_SCHEMA = 'shopping/order_resp.json';
     private const ORDER_FIXTURE = 'shopping.order.get.200.json';
     private const SHIPPED_ORDER_FIXTURE = 'shopping.order.get.shipped_refunded.200.json';
@@ -234,6 +235,77 @@ class ShoppingSchemaConformanceTest extends TestCase
         }
 
         $this->assertArrayNotHasKey('extends', $capabilities['dev.ucp.shopping.checkout'][0]);
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function cartFixtureProvider(): array
+    {
+        return [
+            'create 201' => ['shopping.cart.create.201.json'],
+            'get 200' => ['shopping.cart.get.200.json'],
+            'update 200' => ['shopping.cart.update.200.json'],
+            'cancel 200' => ['shopping.cart.cancel.200.json'],
+        ];
+    }
+
+    /**
+     * @dataProvider cartFixtureProvider
+     * @param string $fixture
+     * @return void
+     */
+    public function testCartResponseMatchesSpec(string $fixture): void
+    {
+        $this->assertMatchesSchema(self::loadFixtureObject($fixture), self::CART_SCHEMA);
+    }
+
+    /**
+     * A cart is a smaller resource than a checkout, not a checkout with fields blanked. None of these
+     * belong on it, and its `ucp` block declares no payment handlers.
+     *
+     * @dataProvider cartFixtureProvider
+     * @param string $fixture
+     * @return void
+     */
+    public function testACartCarriesNoCheckoutOnlyFields(string $fixture): void
+    {
+        $cart = self::loadFixture($fixture);
+
+        foreach (['payment', 'status', 'fulfillment', 'order', 'cart_id'] as $field) {
+            $this->assertArrayNotHasKey($field, $cart, sprintf('"%s" is not a cart field', $field));
+        }
+
+        $this->assertArrayNotHasKey('payment_handlers', $cart['ucp']);
+    }
+
+    /**
+     * Checkout reports missing buyer details as errors because it cannot proceed without them. A cart can,
+     * so the same findings are informational.
+     *
+     * @dataProvider cartFixtureProvider
+     * @param string $fixture
+     * @return void
+     */
+    public function testACartReportsValidationFindingsAsInformational(string $fixture): void
+    {
+        foreach (self::loadFixture($fixture)['messages'] ?? [] as $message) {
+            $this->assertSame('info', $message['type']);
+        }
+    }
+
+    /**
+     * A canceled cart is gone rather than a cart in a canceled state, so a later read is an error
+     * envelope and not a cart.
+     *
+     * @return void
+     */
+    public function testReadingACanceledCartIsAnError(): void
+    {
+        $payload = self::loadFixture('shopping.cart.get.404.json');
+
+        $this->assertMatchesSchema(self::loadFixtureObject('shopping.cart.get.404.json'), self::ERROR_SCHEMA);
+        $this->assertSame('not_found', $payload['messages'][0]['code']);
     }
 
     /**

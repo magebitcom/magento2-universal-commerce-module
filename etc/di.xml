@@ -19,10 +19,12 @@
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\RestHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\RestHandler" />
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\QuoteValidatorInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\Validation\QuoteValidationComposite" />
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\OrderHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\OrderHandler" />
+    <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\CartHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\CartHandler" />
 
     <type name="Magebit\UniversalCommerce\Model\Service\Shopping\ShoppingService">
         <arguments>
             <argument name="capabilities" xsi:type="array">
+                <item name="dev.ucp.shopping.cart" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CartCapability</item>
                 <item name="dev.ucp.shopping.checkout" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CheckoutCapability</item>
                 <item name="dev.ucp.shopping.discount" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\DiscountCapability</item>
                 <item name="dev.ucp.shopping.fulfillment" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\FulfillmentCapability</item>
@@ -63,6 +65,9 @@
     <preference for="Magebit\UcpSpec\Api\CapabilityBusinessSchemaInterface" type="Magebit\UcpSpec\Data\CapabilityBusinessSchema" />
     <preference for="Magebit\UcpSpec\Api\CapabilityResponseSchemaInterface" type="Magebit\UcpSpec\Data\CapabilityResponseSchema" />
     <preference for="Magebit\UcpSpec\Api\UcpResponseCheckoutSchemaInterface" type="Magebit\UcpSpec\Data\UcpResponseCheckoutSchema" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\CartResponseInterface" type="Magebit\UcpSpec\Data\Shopping\CartResponse" />
+    <preference for="Magebit\UcpSpec\Api\UcpResponseCartSchemaInterface" type="Magebit\UcpSpec\Data\UcpResponseCartSchema" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\MessageInfoInterface" type="Magebit\UcpSpec\Data\Shopping\Types\MessageInfo" />
     <!-- Carries the agent's own webhook URL. Unbound until the profile parser gained a caller, because
          nothing had ever built one. -->
     <preference for="Magebit\UcpSpec\Api\Shopping\OrderResponsePlatformSchemaInterface" type="Magebit\UcpSpec\Data\Shopping\OrderResponsePlatformSchema" />

@@ -280,7 +280,7 @@ class QuoteToCheckoutResponse
      * @param CartInterface $quote
      * @return string|null RFC 3339 timestamp, or null when quotes do not expire
      */
-    private function getExpiresAt(CartInterface $quote): ?string
+    public function getExpiresAt(CartInterface $quote): ?string
     {
         $storeId = (int)$quote->getStoreId();
         $lifetimeDays = $this->config->getQuoteLifetimeDays($storeId);
@@ -299,7 +299,7 @@ class QuoteToCheckoutResponse
      * @param string $maskedCartId
      * @return string Browser URL that hands the agent's cart back to the buyer
      */
-    private function getContinueUrl(string $maskedCartId): string
+    public function getContinueUrl(string $maskedCartId): string
     {
         return $this->config->getApiBaseUrl() . '/ucp/checkout/resume/id/' . $maskedCartId;
     }

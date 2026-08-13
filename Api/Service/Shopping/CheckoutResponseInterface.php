@@ -15,8 +15,8 @@ use Magebit\UcpSpec\Api\Shopping\DiscountResponseDiscountsObjectInterface;
 use Magebit\UcpSpec\Api\Shopping\FulfillmentResponseCheckoutInterface;
 
 /**
- * The checkout response carrying both extensions we implement. UCP composes each extension onto the
- * base checkout separately, so no single spec type declares fulfillment and discounts together.
+ * The checkout response carrying every extension we implement. UCP composes each extension onto the
+ * base checkout separately, so no single spec type declares them together.
  */
 interface CheckoutResponseInterface extends FulfillmentResponseCheckoutInterface
 {
@@ -30,4 +30,18 @@ interface CheckoutResponseInterface extends FulfillmentResponseCheckoutInterface
      * @return self
      */
     public function setDiscounts(?DiscountResponseDiscountsObjectInterface $discounts): self;
+
+    /**
+     * Set only on the cart endpoints. The cart capability adds this to the checkout response rather
+     * than defining an envelope of its own.
+     *
+     * @return string|null
+     */
+    public function getCartId(): ?string;
+
+    /**
+     * @param string|null $cartId
+     * @return self
+     */
+    public function setCartId(?string $cartId): self;
 }

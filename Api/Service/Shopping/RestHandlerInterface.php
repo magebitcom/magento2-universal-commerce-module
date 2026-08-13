@@ -47,5 +47,14 @@ interface RestHandlerInterface
      * @param PaymentInterface $paymentData
      * @return CheckoutResponseInterface
      */
+    /**
+     * The quote a session is held on. Exposed because the cart capability works the same quote through
+     * a different response shape.
+     *
+     * @param string $maskedCartId
+     * @return \Magento\Quote\Api\Data\CartInterface
+     */
+    public function getCartByMaskedId(string $maskedCartId): \Magento\Quote\Api\Data\CartInterface;
+
     public function completeCheckout(string $checkoutId, PaymentInterface $paymentData): CheckoutResponseInterface;
 }
