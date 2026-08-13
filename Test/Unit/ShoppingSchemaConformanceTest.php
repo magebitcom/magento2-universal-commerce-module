@@ -25,6 +25,9 @@ class ShoppingSchemaConformanceTest extends TestCase
     private const CHECKOUT_SCHEMA = 'shopping/checkout_resp.json';
     private const ERROR_SCHEMA = 'shopping/types/error_response.json';
     private const CART_SCHEMA = 'shopping/cart_resp.json';
+    private const SEARCH_SCHEMA = 'shopping/catalog_search.json#/$defs/search_response';
+    private const LOOKUP_SCHEMA = 'shopping/catalog_lookup.json#/$defs/lookup_response';
+    private const PRODUCT_SCHEMA = 'shopping/catalog_lookup.json#/$defs/get_product_response';
     private const ORDER_SCHEMA = 'shopping/order_resp.json';
     private const ORDER_FIXTURE = 'shopping.order.get.200.json';
     private const SHIPPED_ORDER_FIXTURE = 'shopping.order.get.shipped_refunded.200.json';
@@ -305,6 +308,90 @@ class ShoppingSchemaConformanceTest extends TestCase
         $payload = self::loadFixture('shopping.cart.get.404.json');
 
         $this->assertMatchesSchema(self::loadFixtureObject('shopping.cart.get.404.json'), self::ERROR_SCHEMA);
+        $this->assertSame('not_found', $payload['messages'][0]['code']);
+    }
+
+    /**
+     * @return void
+     */
+    public function testCatalogSearchMatchesSpec(): void
+    {
+        $this->assertMatchesSchema(self::loadFixtureObject('shopping.catalog.search.200.json'), self::SEARCH_SCHEMA);
+    }
+
+    /**
+     * @return void
+     */
+    public function testCatalogLookupMatchesSpec(): void
+    {
+        $this->assertMatchesSchema(self::loadFixtureObject('shopping.catalog.lookup.200.json'), self::LOOKUP_SCHEMA);
+    }
+
+    /**
+     * @return void
+     */
+    public function testCatalogProductMatchesSpec(): void
+    {
+        $this->assertMatchesSchema(self::loadFixtureObject('shopping.catalog.product.200.json'), self::PRODUCT_SCHEMA);
+    }
+
+    /**
+     * An agent buys a variant, so every product carries at least one even when it has no option axes.
+     *
+     * @return void
+     */
+    public function testEveryProductHasAVariant(): void
+    {
+        foreach (self::loadFixture('shopping.catalog.search.200.json')['products'] as $product) {
+            $this->assertNotEmpty($product['variants'], $product['id'] . ' has a variant');
+        }
+    }
+
+    /**
+     * An out-of-stock product is reported rather than hidden, so an agent learns it exists and cannot be
+     * bought instead of being told nothing. Magento would drop it from the page but not from the count.
+     *
+     * @return void
+     */
+    public function testOutOfStockProductsAreReportedNotHidden(): void
+    {
+        $search = self::loadFixture('shopping.catalog.search.200.json');
+        $statuses = [];
+
+        foreach ($search['products'] as $product) {
+            $statuses[] = $product['variants'][0]['availability']['status'];
+        }
+
+        $this->assertContains('out_of_stock', $statuses);
+        $this->assertCount($search['pagination']['total_count'], $search['products']);
+    }
+
+    /**
+     * A lookup variant has to say which requested identifier resolved to it.
+     *
+     * @return void
+     */
+    public function testLookupCorrelatesEveryVariantToTheRequestedId(): void
+    {
+        foreach (self::loadFixture('shopping.catalog.lookup.200.json')['products'] as $product) {
+            foreach ($product['variants'] as $variant) {
+                $this->assertNotEmpty($variant['inputs']);
+                $this->assertContains($variant['inputs'][0]['match'], ['exact', 'featured']);
+            }
+        }
+    }
+
+    /**
+     * An unknown id is left out of a lookup rather than failing the batch, but a direct product read for
+     * one is an error.
+     *
+     * @return void
+     */
+    public function testAnUnknownProductIsAnError(): void
+    {
+        $payload = self::loadFixture('shopping.catalog.product.404.json');
+
+        $this->assertMatchesSchema(self::loadFixtureObject('shopping.catalog.product.404.json'), self::ERROR_SCHEMA);
         $this->assertSame('not_found', $payload['messages'][0]['code']);
     }
 

@@ -20,11 +20,14 @@
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\QuoteValidatorInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\Validation\QuoteValidationComposite" />
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\OrderHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\OrderHandler" />
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\CartHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\CartHandler" />
+    <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\CatalogHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\CatalogHandler" />
 
     <type name="Magebit\UniversalCommerce\Model\Service\Shopping\ShoppingService">
         <arguments>
             <argument name="capabilities" xsi:type="array">
                 <item name="dev.ucp.shopping.cart" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CartCapability</item>
+                <item name="dev.ucp.shopping.catalog.lookup" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CatalogLookupCapability</item>
+                <item name="dev.ucp.shopping.catalog.search" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CatalogSearchCapability</item>
                 <item name="dev.ucp.shopping.checkout" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CheckoutCapability</item>
                 <item name="dev.ucp.shopping.discount" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\DiscountCapability</item>
                 <item name="dev.ucp.shopping.fulfillment" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\FulfillmentCapability</item>
@@ -84,6 +87,22 @@
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\FulfillmentEventLineItemsItemInterface" type="Magebit\UcpSpec\Data\Shopping\Types\FulfillmentEventLineItemsItem" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\AdjustmentInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Adjustment" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\AdjustmentLineItemsItemInterface" type="Magebit\UcpSpec\Data\Shopping\Types\AdjustmentLineItemsItem" />
+
+    <!-- Shopping - Catalog -->
+    <preference for="Magebit\UcpSpec\Api\Shopping\CatalogSearchSearchResponseInterface" type="Magebit\UcpSpec\Data\Shopping\CatalogSearchSearchResponse" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\CatalogLookupLookupResponseInterface" type="Magebit\UcpSpec\Data\Shopping\CatalogLookupLookupResponse" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\CatalogLookupGetProductResponseInterface" type="Magebit\UcpSpec\Data\Shopping\CatalogLookupGetProductResponse" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\CatalogLookupDetailProductInterface" type="Magebit\UcpSpec\Data\Shopping\CatalogLookupDetailProduct" />
+    <preference for="Magebit\UcpSpec\Api\UcpResponseCatalogSchemaInterface" type="Magebit\UcpSpec\Data\UcpResponseCatalogSchema" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\PaginationResponseInterface" type="Magebit\UcpSpec\Data\Shopping\Types\PaginationResponse" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\ProductInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Product" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\VariantInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Variant" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\VariantAvailabilityInterface" type="Magebit\UcpSpec\Data\Shopping\Types\VariantAvailability" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\PriceInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Price" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\PriceRangeInterface" type="Magebit\UcpSpec\Data\Shopping\Types\PriceRange" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\DescriptionInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Description" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\MediaInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Media" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\InputCorrelationInterface" type="Magebit\UcpSpec\Data\Shopping\Types\InputCorrelation" />
 
     <!-- The shared delivery queue, bound to this protocol's headers. A virtual type rather than a
          preference because the other module delivers with an entirely different header set. -->

@@ -1,0 +1,190 @@
+{
+    "ucp": {
+        "version": "2026-04-08",
+        "capabilities": {
+            "dev.ucp.shopping.cart": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/cart",
+                    "schema": "https://ucp.dev/schemas/shopping/cart.json"
+                }
+            ],
+            "dev.ucp.shopping.catalog.lookup": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/catalog-lookup",
+                    "schema": "https://ucp.dev/schemas/shopping/catalog_lookup.json"
+                }
+            ],
+            "dev.ucp.shopping.catalog.search": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/catalog-search",
+                    "schema": "https://ucp.dev/schemas/shopping/catalog_search.json"
+                }
+            ],
+            "dev.ucp.shopping.checkout": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/checkout",
+                    "schema": "https://ucp.dev/schemas/shopping/checkout.json"
+                }
+            ],
+            "dev.ucp.shopping.discount": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specification/discount",
+                    "schema": "https://ucp.dev/schemas/shopping/discount.json",
+                    "extends": "dev.ucp.shopping.checkout"
+                }
+            ],
+            "dev.ucp.shopping.fulfillment": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/fulfillment",
+                    "schema": "https://ucp.dev/schemas/shopping/fulfillment.json",
+                    "extends": "dev.ucp.shopping.checkout"
+                }
+            ],
+            "dev.ucp.shopping.order": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/order",
+                    "schema": "https://ucp.dev/schemas/shopping/order.json"
+                }
+            ]
+        }
+    },
+    "products": [
+        {
+            "id": "ucp-conformance-simple",
+            "title": "UCP Conformance Simple Product",
+            "description": {
+                "plain": ""
+            },
+            "price_range": {
+                "min": {
+                    "amount": 2000,
+                    "currency": "USD"
+                },
+                "max": {
+                    "amount": 2000,
+                    "currency": "USD"
+                }
+            },
+            "variants": [
+                {
+                    "id": "ucp-conformance-simple",
+                    "sku": "ucp-conformance-simple",
+                    "title": "UCP Conformance Simple Product",
+                    "description": {
+                        "plain": ""
+                    },
+                    "price": {
+                        "amount": 2000,
+                        "currency": "USD"
+                    },
+                    "availability": {
+                        "available": true,
+                        "status": "in_stock"
+                    }
+                }
+            ],
+            "url": "https://merchant.example/ucp-conformance-simple-product.html",
+            "media": [
+                {
+                    "type": "image",
+                    "url": "https://merchant.example/static/versionSTATIC/frontend/Magento/luma/en_US/Magento_Catalog/images/product/placeholder/image.jpg"
+                }
+            ]
+        },
+        {
+            "id": "ucp-conformance-second",
+            "title": "UCP Conformance Second Product",
+            "description": {
+                "plain": ""
+            },
+            "price_range": {
+                "min": {
+                    "amount": 3550,
+                    "currency": "USD"
+                },
+                "max": {
+                    "amount": 3550,
+                    "currency": "USD"
+                }
+            },
+            "variants": [
+                {
+                    "id": "ucp-conformance-second",
+                    "sku": "ucp-conformance-second",
+                    "title": "UCP Conformance Second Product",
+                    "description": {
+                        "plain": ""
+                    },
+                    "price": {
+                        "amount": 3550,
+                        "currency": "USD"
+                    },
+                    "availability": {
+                        "available": true,
+                        "status": "in_stock"
+                    }
+                }
+            ],
+            "url": "https://merchant.example/ucp-conformance-second-product.html",
+            "media": [
+                {
+                    "type": "image",
+                    "url": "https://merchant.example/static/versionSTATIC/frontend/Magento/luma/en_US/Magento_Catalog/images/product/placeholder/image.jpg"
+                }
+            ]
+        },
+        {
+            "id": "ucp-conformance-oos",
+            "title": "UCP Conformance Out Of Stock Product",
+            "description": {
+                "plain": ""
+            },
+            "price_range": {
+                "min": {
+                    "amount": 1500,
+                    "currency": "USD"
+                },
+                "max": {
+                    "amount": 1500,
+                    "currency": "USD"
+                }
+            },
+            "variants": [
+                {
+                    "id": "ucp-conformance-oos",
+                    "sku": "ucp-conformance-oos",
+                    "title": "UCP Conformance Out Of Stock Product",
+                    "description": {
+                        "plain": ""
+                    },
+                    "price": {
+                        "amount": 1500,
+                        "currency": "USD"
+                    },
+                    "availability": {
+                        "available": false,
+                        "status": "out_of_stock"
+                    }
+                }
+            ],
+            "url": "https://merchant.example/ucp-conformance-out-of-stock-product.html",
+            "media": [
+                {
+                    "type": "image",
+                    "url": "https://merchant.example/static/versionSTATIC/frontend/Magento/luma/en_US/Magento_Catalog/images/product/placeholder/image.jpg"
+                }
+            ]
+        }
+    ],
+    "pagination": {
+        "has_next_page": false,
+        "total_count": 3
+    }
+}

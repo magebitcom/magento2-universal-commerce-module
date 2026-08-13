@@ -219,6 +219,19 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
     }
 
     /**
+     * The request body as an array. The catalog operations take small bodies with no session, so they
+     * read them directly rather than through a generated request class.
+     *
+     * @return array<mixed>
+     */
+    protected function decodedBody(): array
+    {
+        $decoded = json_decode((string) $this->getHttpRequest()->getContent(), true);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
      * @return ResultJson
      */
     protected function missingCartId(): ResultJson
