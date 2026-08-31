@@ -135,11 +135,17 @@ class QuoteToFulfillmentResponse
         if (!empty($options)) {
             $group->setOptions(array_values($options));
 
-            $selectedOptionId = $this->submittedString($submittedGroup, 'selected_option_id')
-                ?? $shippingAddress->getShippingMethod();
+            // Only a selection that names one of the options above is reported. Echoing back an id the
+            // store does not offer leaves a dangling reference, and tells the agent a shipping method is
+            // chosen when the order has none.
+            $selectedOptionId = $this->firstOfferedOption(
+                $options,
+                $this->submittedString($submittedGroup, 'selected_option_id'),
+                $shippingAddress->getShippingMethod()
+            );
 
-            if ($selectedOptionId) {
-                $group->setSelectedOptionId((string)$selectedOptionId);
+            if ($selectedOptionId !== null) {
+                $group->setSelectedOptionId($selectedOptionId);
             }
         }
 
@@ -225,6 +231,28 @@ class QuoteToFulfillmentResponse
         }
 
         return $destination;
+    }
+
+    /**
+     * @param FulfillmentOptionResponseInterface[] $options Options the response lists
+     * @param string|null ...$candidates Selections to try, best first
+     * @return string|null The first candidate the store actually offers
+     */
+    private function firstOfferedOption(array $options, ?string ...$candidates): ?string
+    {
+        $offered = [];
+
+        foreach ($options as $option) {
+            $offered[] = (string) $option->getId();
+        }
+
+        foreach ($candidates as $candidate) {
+            if ($candidate !== null && $candidate !== '' && in_array($candidate, $offered, true)) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     /**

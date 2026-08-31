@@ -120,6 +120,46 @@ class QuoteToFulfillmentResponseTest extends TestCase
     }
 
     /**
+     * A selection naming an option the store does not offer points at nothing, and reporting it tells
+     * the agent a shipping method is chosen when the order has none — which only surfaces later, as a
+     * refusal to place the order.
+     *
+     * @return void
+     */
+    public function testASelectionNamingAnUnofferedOptionIsNotEchoed(): void
+    {
+        $methods = $this->converter->getMethods($this->address(), ['1'], [
+            'groups' => [['id' => 'g1', 'selected_option_id' => 'std-ship']],
+        ]);
+
+        $this->assertNull($methods[0]->getGroups()[0]->getSelectedOptionId());
+    }
+
+    /**
+     * @return void
+     */
+    public function testTheQuotesOwnMethodIsUsedWhenTheSubmittedOneIsNotOffered(): void
+    {
+        $methods = $this->converter->getMethods($this->address('flatrate_flatrate'), ['1'], [
+            'groups' => [['id' => 'g1', 'selected_option_id' => 'std-ship']],
+        ]);
+
+        $this->assertSame('flatrate_flatrate', $methods[0]->getGroups()[0]->getSelectedOptionId());
+    }
+
+    /**
+     * @return void
+     */
+    public function testAnUnofferedMethodOnTheQuoteIsNotEchoedEither(): void
+    {
+        $methods = $this->converter->getMethods($this->address('ups_ground'), ['1'], [
+            'groups' => [['id' => 'g1']],
+        ]);
+
+        $this->assertNull($methods[0]->getGroups()[0]->getSelectedOptionId());
+    }
+
+    /**
      * There is one address on the quote, so a selection naming something the agent never described has
      * nothing to point at — the response names the destination it does list rather than echoing a
      * reference that resolves to nothing.
@@ -232,7 +272,7 @@ class QuoteToFulfillmentResponseTest extends TestCase
     /**
      * @return Address
      */
-    private function address(): Address
+    private function address(?string $shippingMethod = null): Address
     {
         $quote = $this->getMockBuilder(Quote::class)->disableOriginalConstructor()->onlyMethods([])->getMock();
 
@@ -250,7 +290,7 @@ class QuoteToFulfillmentResponseTest extends TestCase
         $address->method('getCountryId')->willReturn('LV');
         $address->method('getStreet')->willReturn(['Brivibas 1']);
         $address->method('getId')->willReturn(7);
-        $address->method('getShippingMethod')->willReturn(null);
+        $address->method('getShippingMethod')->willReturn($shippingMethod);
 
         return $address;
     }
