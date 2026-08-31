@@ -16,23 +16,18 @@ use Magebit\UcpSpec\Api\Shopping\OrderResponseInterface;
 use Magebit\UniversalCommerce\Api\Service\Shopping\OrderHandlerInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Order\IncrementIdLookup;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\OrderToOrderResponse;
-use Magento\Framework\Api\SearchCriteriaBuilder;
-use Magento\Sales\Api\Data\OrderInterface;
-use Magento\Sales\Api\OrderRepositoryInterface;
-use Magento\Sales\Model\Order;
 
 class OrderHandler implements OrderHandlerInterface
 {
     /**
-     * @param OrderRepositoryInterface $orderRepository
-     * @param SearchCriteriaBuilder $searchCriteriaBuilder
+     * @param IncrementIdLookup $orderLookup
      * @param OrderLinkRepositoryInterface $orderLinkRepository
      * @param OrderToOrderResponse $orderConverter
      */
     public function __construct(
-        private readonly OrderRepositoryInterface $orderRepository,
-        private readonly SearchCriteriaBuilder $searchCriteriaBuilder,
+        private readonly IncrementIdLookup $orderLookup,
         private readonly OrderLinkRepositoryInterface $orderLinkRepository,
         private readonly OrderToOrderResponse $orderConverter
     ) {
@@ -43,7 +38,7 @@ class OrderHandler implements OrderHandlerInterface
      */
     public function getOrder(string $orderId): OrderResponseInterface
     {
-        $order = $this->findByIncrementId($orderId);
+        $order = $this->orderLookup->find($orderId);
         $entityId = $order?->getEntityId();
         $checkoutId = is_numeric($entityId)
             ? $this->orderLinkRepository->findSessionId(IdempotencyHandler::SCOPE, (int) $entityId)
@@ -61,32 +56,5 @@ class OrderHandler implements OrderHandlerInterface
         }
 
         return $this->orderConverter->convert($order, $checkoutId);
-    }
-
-    /**
-     * The identifier is the increment id, because that is what the checkout's order confirmation gave
-     * the agent.
-     *
-     * @param string $incrementId
-     * @return Order|null
-     */
-    private function findByIncrementId(string $incrementId): ?Order
-    {
-        if ($incrementId === '') {
-            return null;
-        }
-
-        $criteria = $this->searchCriteriaBuilder
-            ->addFilter(OrderInterface::INCREMENT_ID, $incrementId)
-            ->setPageSize(1)
-            ->create();
-
-        foreach ($this->orderRepository->getList($criteria)->getItems() as $order) {
-            if ($order instanceof Order) {
-                return $order;
-            }
-        }
-
-        return null;
     }
 }

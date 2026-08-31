@@ -17,6 +17,25 @@ The Universal Commerce Protocol (UCP) is an open-source standard designed to pow
 
 UCP is developed by Google in collaboration with industry leaders including Shopify, Etsy, Wayfair, Target, and Walmart endorsed by over 20 global partners across the ecosystem like Adyen, American Express, Best Buy, Flipkart, Macy's Inc, Mastercard, Stripe, The Home Depot, Visa, Zalando and many more.
 
+## Conformance testing
+
+The UCP conformance suite needs a way to move an order to shipped so it can check the order event that
+follows. That is not part of UCP: the suite hardcodes the path `POST /testing/simulate-shipping/{order_id}`
+and a `Simulation-Secret` header, copying the reference sample server.
+
+The endpoint stays switched off until a secret is set in `app/etc/env.php`:
+
+```php
+'universal_commerce' => [
+    'simulation_secret' => 'a-long-random-value'
+],
+```
+
+Remove the key to switch it off again. With no secret set the endpoint answers `404` as though it were
+never routed, and it only ever ships orders that UCP placed itself — never the storefront's.
+
+Do not set this on a production store unless you are running the suite against it.
+
 ## Contributing
 
 Found a bug, have a feature suggestion or just want to help in general? Contributions are very welcome! Check out the list of active issues or submit one yourself.

@@ -16,12 +16,9 @@ use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
 use Magebit\UcpSpec\Api\Shopping\OrderResponseInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Order\IncrementIdLookup;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\OrderToOrderResponse;
 use Magebit\UniversalCommerce\Model\Service\Shopping\OrderHandler;
-use Magento\Framework\Api\SearchCriteria;
-use Magento\Framework\Api\SearchCriteriaBuilder;
-use Magento\Sales\Api\Data\OrderSearchResultInterface;
-use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Sales\Model\Order;
 use PHPUnit\Framework\TestCase;
 
@@ -73,28 +70,6 @@ class OrderHandlerTest extends TestCase
     }
 
     /**
-     * A missing identifier must not turn into an unfiltered search that serves an arbitrary order.
-     *
-     * @return void
-     */
-    public function testAnEmptyIdentifierNeverReachesTheRepository(): void
-    {
-        $repository = $this->createMock(OrderRepositoryInterface::class);
-        $repository->expects($this->never())->method('getList');
-
-        $handler = new OrderHandler(
-            $repository,
-            $this->searchCriteriaBuilder(),
-            $this->createMock(OrderLinkRepositoryInterface::class),
-            $this->createMock(OrderToOrderResponse::class)
-        );
-
-        $this->expectException(UcpException::class);
-
-        $handler->getOrder('');
-    }
-
-    /**
      * @return void
      */
     public function testTheResponseIsBuiltForTheLinkedCheckout(): void
@@ -125,11 +100,8 @@ class OrderHandlerTest extends TestCase
             ->getMock();
         $order->method('getEntityId')->willReturn(self::ENTITY_ID);
 
-        $searchResult = $this->createMock(OrderSearchResultInterface::class);
-        $searchResult->method('getItems')->willReturn($found ? [$order] : []);
-
-        $repository = $this->createMock(OrderRepositoryInterface::class);
-        $repository->method('getList')->willReturn($searchResult);
+        $lookup = $this->createMock(IncrementIdLookup::class);
+        $lookup->method('find')->willReturn($found ? $order : null);
 
         $links = $this->createMock(OrderLinkRepositoryInterface::class);
         $links->method('findSessionId')
@@ -141,19 +113,6 @@ class OrderHandlerTest extends TestCase
             $converter->method('convert')->willReturn($this->createMock(OrderResponseInterface::class));
         }
 
-        return new OrderHandler($repository, $this->searchCriteriaBuilder(), $links, $converter);
-    }
-
-    /**
-     * @return SearchCriteriaBuilder
-     */
-    private function searchCriteriaBuilder(): SearchCriteriaBuilder
-    {
-        $builder = $this->createMock(SearchCriteriaBuilder::class);
-        $builder->method('addFilter')->willReturnSelf();
-        $builder->method('setPageSize')->willReturnSelf();
-        $builder->method('create')->willReturn($this->createMock(SearchCriteria::class));
-
-        return $builder;
+        return new OrderHandler($lookup, $links, $converter);
     }
 }
