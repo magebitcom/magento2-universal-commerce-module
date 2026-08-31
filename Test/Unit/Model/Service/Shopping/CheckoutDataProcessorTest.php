@@ -18,6 +18,7 @@ use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentMethodCreateRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\ItemCreateRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\LineItemCreateRequestInterface;
+use Magebit\UcpSpec\Api\Shopping\DiscountResponseDiscountsObjectInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
 use Magebit\AgenticCore\Model\Quote\AddressWriter;
@@ -66,6 +67,11 @@ class CheckoutDataProcessorTest extends TestCase
     private Http $httpRequest;
 
     /**
+     * @var GuestCouponManagementInterface&MockObject
+     */
+    private GuestCouponManagementInterface $couponManagement;
+
+    /**
      * @var CheckoutDataProcessor
      */
     private CheckoutDataProcessor $processor;
@@ -87,13 +93,14 @@ class CheckoutDataProcessorTest extends TestCase
 
         $this->agentProfileParser = $this->createMock(AgentProfileParser::class);
         $this->httpRequest = $this->createMock(Http::class);
+        $this->couponManagement = $this->createMock(GuestCouponManagementInterface::class);
 
         $this->processor = new CheckoutDataProcessor(
             $this->lineItemWriter,
             new AddressWriter($this->createMock(RegionResolver::class)),
             new PersonalInformationCopier(),
             $this->shippingMethodWriter,
-            $this->createMock(GuestCouponManagementInterface::class),
+            $this->couponManagement,
             $this->agentProfileParser,
             $this->httpRequest,
             $messageFactory
@@ -493,6 +500,63 @@ class CheckoutDataProcessorTest extends TestCase
     }
 
     /**
+     * Magento carries one coupon per cart, so an agent that sent two has to be told which one counted.
+     *
+     * @return void
+     */
+    public function testASecondDiscountCodeIsReportedRatherThanDropped(): void
+    {
+        $quote = $this->createQuote();
+        $this->couponManagement->expects($this->once())->method('set')->with('cart-1', '10OFF');
+
+        $this->processor->processDiscountInformation('cart-1', $quote, $this->discounts(['10OFF', 'WELCOME20']));
+
+        $this->assertCount(1, $this->createdMessages);
+        $this->assertSame(CheckoutDataProcessor::CODE_NOT_APPLIED, $this->createdMessages[0]['code']);
+        $this->assertSame('$.discounts.codes[1]', $this->createdMessages[0]['path']);
+        $this->assertStringContainsString('WELCOME20', $this->createdMessages[0]['content']);
+    }
+
+    /**
+     * @return void
+     */
+    public function testASingleDiscountCodeIsAppliedWithNothingToReport(): void
+    {
+        $quote = $this->createQuote();
+        $this->couponManagement->expects($this->once())->method('set')->with('cart-1', '10OFF');
+
+        $this->processor->processDiscountInformation('cart-1', $quote, $this->discounts(['10OFF']));
+
+        $this->assertSame([], $this->createdMessages);
+    }
+
+    /**
+     * @return void
+     */
+    public function testNoCodesAtAllClearsTheCoupon(): void
+    {
+        $quote = $this->createQuote();
+        $this->couponManagement->expects($this->once())->method('remove')->with('cart-1');
+        $this->couponManagement->expects($this->never())->method('set');
+
+        $this->processor->processDiscountInformation('cart-1', $quote, $this->discounts([]));
+
+        $this->assertSame([], $this->createdMessages);
+    }
+
+    /**
+     * @param string[] $codes
+     * @return DiscountResponseDiscountsObjectInterface&MockObject
+     */
+    private function discounts(array $codes): DiscountResponseDiscountsObjectInterface
+    {
+        $discounts = $this->createMock(DiscountResponseDiscountsObjectInterface::class);
+        $discounts->method('getCodes')->willReturn($codes);
+
+        return $discounts;
+    }
+
+    /**
      * @param Address|null $shippingAddress
      * @param Address|null $billingAddress
      * @return Quote&MockObject
@@ -501,7 +565,14 @@ class CheckoutDataProcessorTest extends TestCase
     {
         $quote = $this->getMockBuilder(Quote::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['getShippingAddress', 'getBillingAddress', 'getStoreId', 'removeAllItems', 'addProduct'])
+            ->onlyMethods([
+                'getShippingAddress',
+                'getBillingAddress',
+                'getStoreId',
+                'removeAllItems',
+                'addProduct',
+                'collectTotals',
+            ])
             ->getMock();
 
         $quote->method('getShippingAddress')->willReturn($shippingAddress ?? $this->createAddress());

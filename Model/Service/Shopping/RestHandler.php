@@ -15,6 +15,7 @@ use Magebit\UniversalCommerce\Api\Service\Shopping\RestHandlerInterface;
 use Magebit\UniversalCommerce\Api\Service\Shopping\CheckoutUpdateRequestInterface;
 use Magebit\UniversalCommerce\Api\Service\Shopping\CheckoutCreateRequestInterface;
 use Magebit\UniversalCommerce\Api\Service\Shopping\CheckoutResponseInterface;
+use Magebit\UcpSpec\Api\Shopping\BuyerConsentResponseConsentInterface;
 use Magebit\UcpSpec\Api\Shopping\PaymentInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentRequestInterface;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\QuoteToCheckoutResponse;
@@ -91,7 +92,12 @@ class RestHandler implements RestHandlerInterface
 
         $this->checkoutDataProcessor->processCreateCheckoutRequest($cart, $request, $maskedCartId);
         $this->cartRepository->save($cart);
-        $this->recordCheckoutMeta($maskedCartId, (int) $cart->getId(), $request->getFulfillment());
+        $this->recordCheckoutMeta(
+            $maskedCartId,
+            (int) $cart->getId(),
+            $request->getFulfillment(),
+            $request->getBuyer()?->getConsent()
+        );
 
         return $this->quoteToCheckoutResponse->convert($cart, $maskedCartId);
     }
@@ -150,6 +156,7 @@ class RestHandler implements RestHandlerInterface
         $this->checkoutDataProcessor->processUpdateCheckoutRequest($cart, $request, $checkoutId);
         $this->cartRepository->save($cart);
         $this->rememberSubmittedFulfillment($checkoutId, $request->getFulfillment());
+        $this->rememberBuyerConsent($checkoutId, $request->getBuyer()?->getConsent());
 
         return $this->quoteToCheckoutResponse->convert($cart, $checkoutId);
     }
@@ -256,18 +263,22 @@ class RestHandler implements RestHandlerInterface
     /**
      * @param string $checkoutId
      * @param int $quoteId
+     * @param FulfillmentRequestInterface|null $fulfillment
+     * @param BuyerConsentResponseConsentInterface|null $consent
      * @return void
      */
     protected function recordCheckoutMeta(
         string $checkoutId,
         int $quoteId,
-        ?FulfillmentRequestInterface $fulfillment = null
+        ?FulfillmentRequestInterface $fulfillment = null,
+        ?BuyerConsentResponseConsentInterface $consent = null
     ): void {
         /** @var CheckoutMetaInterface $meta */
         $meta = $this->checkoutMetaFactory->create();
         $meta->setCheckoutId($checkoutId);
         $meta->setQuoteId($quoteId);
-        $meta->setSubmittedFulfillment($this->encodeFulfillment($fulfillment));
+        $meta->setSubmittedFulfillment($this->encode($fulfillment));
+        $meta->setBuyerConsent($this->encode($consent));
         // Recorded at create time because the agent's header is only present on its own requests; an
         // order event fires later, out of band, with no request to read it from.
         $meta->setWebhookUrl($this->checkoutDataProcessor->getAgentWebhookUrl());
@@ -295,21 +306,47 @@ class RestHandler implements RestHandlerInterface
             return;
         }
 
-        $meta->setSubmittedFulfillment($this->encodeFulfillment($fulfillment));
+        $meta->setSubmittedFulfillment($this->encode($fulfillment));
         $this->checkoutMetaRepository->save($meta);
     }
 
     /**
-     * @param FulfillmentRequestInterface|null $fulfillment
-     * @return string|null
+     * Consent is a record of what the buyer agreed to, so a request that says nothing about it leaves
+     * the earlier answer standing rather than clearing it.
+     *
+     * @param string $checkoutId
+     * @param BuyerConsentResponseConsentInterface|null $consent
+     * @return void
      */
-    private function encodeFulfillment(?FulfillmentRequestInterface $fulfillment): ?string
+    protected function rememberBuyerConsent(
+        string $checkoutId,
+        ?BuyerConsentResponseConsentInterface $consent
+    ): void {
+        if ($consent === null) {
+            return;
+        }
+
+        try {
+            $meta = $this->checkoutMetaRepository->getByCheckoutId($checkoutId);
+        } catch (NoSuchEntityException $exception) {
+            return;
+        }
+
+        $meta->setBuyerConsent($this->encode($consent));
+        $this->checkoutMetaRepository->save($meta);
+    }
+
+    /**
+     * @param object|null $value A spec object, which serialises back to the JSON it arrived as
+     * @return string|null JSON, or null when there is nothing to store
+     */
+    private function encode(?object $value): ?string
     {
-        if ($fulfillment === null) {
+        if ($value === null) {
             return null;
         }
 
-        $encoded = json_encode($fulfillment);
+        $encoded = json_encode($value);
 
         return $encoded === false ? null : $encoded;
     }

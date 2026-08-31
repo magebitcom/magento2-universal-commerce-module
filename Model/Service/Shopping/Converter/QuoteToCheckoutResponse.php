@@ -100,7 +100,7 @@ class QuoteToCheckoutResponse
 
         $response->setLineItems($this->getLineItems($quote));
 
-        if ($buyer = $this->getBuyer($quote)) {
+        if ($buyer = $this->getBuyer($quote, $this->getBuyerConsent($maskedCartId))) {
             $response->setBuyer($buyer);
         }
 
@@ -189,11 +189,35 @@ class QuoteToCheckoutResponse
 
     /**
      * @param CartInterface $quote
+     * @param array<mixed>|null $consent
      * @return BuyerInterface|null
      */
-    public function getBuyer(CartInterface $quote): ?BuyerInterface
+    public function getBuyer(CartInterface $quote, ?array $consent = null): ?BuyerInterface
     {
-        return $this->quoteToBuyerResponse->convert($quote);
+        return $this->quoteToBuyerResponse->convert($quote, $consent);
+    }
+
+    /**
+     * @param string $maskedCartId
+     * @return array<mixed>|null Consent as the agent recorded it
+     */
+    private function getBuyerConsent(string $maskedCartId): ?array
+    {
+        try {
+            $meta = $this->checkoutMetaRepository->getByCheckoutId($maskedCartId);
+        } catch (NoSuchEntityException $exception) {
+            return null;
+        }
+
+        $encoded = $meta->getBuyerConsent();
+
+        if ($encoded === null) {
+            return null;
+        }
+
+        $decoded = json_decode($encoded, true);
+
+        return is_array($decoded) ? $decoded : null;
     }
 
     /**

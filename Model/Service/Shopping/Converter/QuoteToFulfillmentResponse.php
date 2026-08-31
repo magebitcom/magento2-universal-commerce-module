@@ -256,8 +256,8 @@ class QuoteToFulfillmentResponse
     }
 
     /**
-     * The fulfillment total carries the incl-tax amount, which is what a consumer adding it to the
-     * order total needs; the excl-tax amount would under-quote shipping wherever shipping is taxed.
+     * A breakdown that adds up: the shipping charge, its tax where there is any, and the total the
+     * option adds to the order. A consumer reading only the total still gets the full cost.
      *
      * @param ShippingOption[] $shippingOptions
      * @return FulfillmentOptionResponseInterface[]
@@ -271,15 +271,53 @@ class QuoteToFulfillmentResponse
             $option->setTitle($shippingOption->title);
             $option->setDescription($shippingOption->description);
             $option->setCarrier($shippingOption->carrier);
-
-            $total = $this->totalResponseFactory->create();
-            $total->setType(TotalTypeInterface::TYPE_FULFILLMENT);
-            $total->setAmount($shippingOption->amountInclTax);
-            $total->setDisplayText($shippingOption->title);
-
-            $option->setTotals([$total]);
+            $option->setTotals($this->optionTotals($shippingOption));
 
             return $option;
         }, $shippingOptions);
+    }
+
+    /**
+     * @param ShippingOption $shippingOption
+     * @return TotalResponseInterface[]
+     */
+    private function optionTotals(ShippingOption $shippingOption): array
+    {
+        $totals = [
+            $this->total(
+                TotalTypeInterface::TYPE_FULFILLMENT,
+                $shippingOption->title,
+                $shippingOption->amountExclTax
+            ),
+        ];
+
+        if ($shippingOption->taxAmount > 0) {
+            $totals[] = $this->total(TotalTypeInterface::TYPE_TAX, 'Tax', $shippingOption->taxAmount);
+        }
+
+        $totals[] = $this->total(
+            TotalTypeInterface::TYPE_TOTAL,
+            $shippingOption->title,
+            $shippingOption->amountInclTax
+        );
+
+        return $totals;
+    }
+
+    /**
+     * @param string $type
+     * @param string $displayText
+     * @param int $amount Minor units
+     * @return TotalResponseInterface
+     */
+    private function total(string $type, string $displayText, int $amount): TotalResponseInterface
+    {
+        /** @var TotalResponseInterface $total */
+        $total = $this->totalResponseFactory->create();
+        $total->setType($type);
+        $total->setAmount($amount);
+        $total->setDisplayText($displayText);
+
+        return $total;
     }
 }

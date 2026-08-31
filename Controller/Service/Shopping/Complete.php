@@ -89,7 +89,7 @@ class Complete extends ApiController
             $completeCheckoutResponse = $this->restHandler->completeCheckout($checkoutId, $paymentData);
 
             if ($completeCheckoutResponse instanceof JsonSerializable) {
-                $this->idempotencyHandler->storeResponse($this->getHttpRequest(), $completeCheckoutResponse, 201);
+                $this->idempotencyHandler->storeResponse($this->getHttpRequest(), $completeCheckoutResponse, 200);
 
                 return $this->makeJsonResponse($completeCheckoutResponse);
             }

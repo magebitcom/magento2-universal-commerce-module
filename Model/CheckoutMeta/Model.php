@@ -124,6 +124,24 @@ class Model extends AbstractModel implements CheckoutMetaInterface
     /**
      * @inheritDoc
      */
+    public function getBuyerConsent(): ?string
+    {
+        $value = $this->getData(self::BUYER_CONSENT);
+
+        return is_string($value) ? $value : null;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function setBuyerConsent(?string $buyerConsent): CheckoutMetaInterface
+    {
+        return $this->setData(self::BUYER_CONSENT, $buyerConsent);
+    }
+
+    /**
+     * @inheritDoc
+     */
     public function getCreatedAt(): ?string
     {
         return $this->getData(self::CREATED_AT);

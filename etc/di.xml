@@ -39,6 +39,7 @@
                 <item name="dev.ucp.shopping.cart" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CartCapability</item>
                 <item name="dev.ucp.shopping.catalog.lookup" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CatalogLookupCapability</item>
                 <item name="dev.ucp.shopping.catalog.search" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CatalogSearchCapability</item>
+                <item name="dev.ucp.shopping.buyer_consent" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\BuyerConsentCapability</item>
                 <item name="dev.ucp.shopping.checkout" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CheckoutCapability</item>
                 <item name="dev.ucp.shopping.discount" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\DiscountCapability</item>
                 <item name="dev.ucp.shopping.fulfillment" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\FulfillmentCapability</item>
@@ -151,7 +152,9 @@
     <preference for="Magebit\UcpSpec\Api\Shopping\PaymentInterface" type="Magebit\UcpSpec\Data\Shopping\Payment" />
 
     <!-- Shopping - Types -->
-    <preference for="Magebit\UcpSpec\Api\Shopping\Types\BuyerInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Buyer" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\BuyerInterface" type="Magebit\UniversalCommerce\Model\Spec\Schemas\Shopping\BuyerWithConsent" />
+    <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\BuyerWithConsentInterface" type="Magebit\UniversalCommerce\Model\Spec\Schemas\Shopping\BuyerWithConsent" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\BuyerConsentResponseConsentInterface" type="Magebit\UcpSpec\Data\Shopping\BuyerConsentResponseConsent" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\ItemCreateRequestInterface" type="Magebit\UcpSpec\Data\Shopping\Types\ItemCreateRequest" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\ItemUpdateRequestInterface" type="Magebit\UcpSpec\Data\Shopping\Types\ItemUpdateRequest" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\LineItemCreateRequestInterface" type="Magebit\UcpSpec\Data\Shopping\Types\LineItemCreateRequest" />

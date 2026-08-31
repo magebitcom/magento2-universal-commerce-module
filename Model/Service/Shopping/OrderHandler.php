@@ -14,6 +14,8 @@ namespace Magebit\UniversalCommerce\Model\Service\Shopping;
 use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
 use Magebit\UcpSpec\Api\Shopping\OrderResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\OrderUpdateRequestInterface;
+use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
+use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
 use Magebit\UniversalCommerce\Api\Service\Shopping\OrderHandlerInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
@@ -25,18 +27,27 @@ use Magento\Sales\Model\Order;
 class OrderHandler implements OrderHandlerInterface
 {
     /**
+     * Freeform, because the specification's own list has no code for a field the business does not take
+     * from the platform.
+     */
+    public const CODE_NOT_ACCEPTED = 'not_accepted';
+
+    /**
      * @param IncrementIdLookup $orderLookup
      * @param OrderLinkRepositoryInterface $orderLinkRepository
      * @param OrderToOrderResponse $orderConverter
      * @param AdjustmentRecorder $adjustmentRecorder
+     * @param MessageInterfaceFactory $messageFactory
      */
     public function __construct(
         private readonly IncrementIdLookup $orderLookup,
         private readonly OrderLinkRepositoryInterface $orderLinkRepository,
         private readonly OrderToOrderResponse $orderConverter,
-        private readonly AdjustmentRecorder $adjustmentRecorder
+        private readonly AdjustmentRecorder $adjustmentRecorder,
+        private readonly MessageInterfaceFactory $messageFactory
     ) {
     }
+
 
     /**
      * @inheritDoc
@@ -60,7 +71,46 @@ class OrderHandler implements OrderHandlerInterface
 
         $this->adjustmentRecorder->record($order, $request->getAdjustments() ?? []);
 
-        return $this->orderConverter->convert($order, $checkoutId);
+        $response = $this->orderConverter->convert($order, $checkoutId);
+        $warning = $this->refusedShipmentWarning($request, $response);
+
+        if ($warning !== null) {
+            $response->setMessages([$warning]);
+        }
+
+        return $response;
+    }
+
+    /**
+     * The shipment log says what the store actually did, so it is not the platform's to write. A
+     * submitted event is left out and said so, rather than being dropped without a word.
+     *
+     * @param OrderUpdateRequestInterface $request
+     * @param OrderResponseInterface $response
+     * @return MessageInterface|null
+     */
+    private function refusedShipmentWarning(
+        OrderUpdateRequestInterface $request,
+        OrderResponseInterface $response
+    ): ?MessageInterface {
+        $submitted = $request->getFulfillment()->getEvents() ?? [];
+        $recorded = $response->getFulfillment()->getEvents() ?? [];
+
+        if (count($submitted) <= count($recorded)) {
+            return null;
+        }
+
+        /** @var MessageInterface $warning */
+        $warning = $this->messageFactory->create(['data' => [
+            MessageInterface::KEY_TYPE => 'warning',
+            MessageInterface::KEY_CODE => self::CODE_NOT_ACCEPTED,
+            MessageInterface::KEY_PATH => '$.fulfillment.events',
+            MessageInterface::KEY_CONTENT => 'This store records shipments itself, so the fulfillment '
+                . 'events in this request were not added. The events reported here are the ones the '
+                . 'store has shipped.',
+        ]]);
+
+        return $warning;
     }
 
     /**

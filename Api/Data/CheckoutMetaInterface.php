@@ -22,6 +22,7 @@ interface CheckoutMetaInterface
     public const ORDER_ID = 'order_id';
     public const WEBHOOK_URL = 'webhook_url';
     public const SUBMITTED_FULFILLMENT = 'submitted_fulfillment';
+    public const BUYER_CONSENT = 'buyer_consent';
     public const CREATED_AT = 'created_at';
     public const UPDATED_AT = 'updated_at';
 
@@ -104,6 +105,19 @@ interface CheckoutMetaInterface
      * @return $this
      */
     public function setSubmittedFulfillment(?string $submittedFulfillment): self;
+
+    /**
+     * The data-processing consent the agent recorded for this buyer, as JSON.
+     *
+     * @return string|null
+     */
+    public function getBuyerConsent(): ?string;
+
+    /**
+     * @param string|null $buyerConsent
+     * @return $this
+     */
+    public function setBuyerConsent(?string $buyerConsent): self;
 
     /**
      * Get created at

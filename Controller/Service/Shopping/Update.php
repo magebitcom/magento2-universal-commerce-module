@@ -86,7 +86,7 @@ class Update extends ApiController
             $checkoutResponse = $this->restHandler->updateCheckout($checkoutId, $checkoutUpdateRequest);
 
             if ($checkoutResponse instanceof JsonSerializable) {
-                $this->idempotencyHandler->storeResponse($this->getHttpRequest(), $checkoutResponse, 201);
+                $this->idempotencyHandler->storeResponse($this->getHttpRequest(), $checkoutResponse, 200);
 
                 return $this->makeJsonResponse($checkoutResponse);
             }

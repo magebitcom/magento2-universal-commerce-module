@@ -46,8 +46,7 @@ class QuoteToFulfillmentResponseTest extends TestCase
      */
     protected function setUp(): void
     {
-        $resolver = $this->createMock(ShippingOptionResolver::class);
-        $resolver->method('resolve')->willReturn([
+        $this->converter = $this->converterFor([
             new ShippingOption(
                 'flatrate_flatrate',
                 'Fixed',
@@ -58,8 +57,18 @@ class QuoteToFulfillmentResponseTest extends TestCase
                 self::AMOUNT_INCL_TAX
             ),
         ]);
+    }
 
-        $this->converter = new QuoteToFulfillmentResponse(
+    /**
+     * @param ShippingOption[] $options Options the store offers
+     * @return QuoteToFulfillmentResponse
+     */
+    private function converterFor(array $options): QuoteToFulfillmentResponse
+    {
+        $resolver = $this->createMock(ShippingOptionResolver::class);
+        $resolver->method('resolve')->willReturn($options);
+
+        return new QuoteToFulfillmentResponse(
             $this->factory(FulfillmentResponseInterfaceFactory::class, FulfillmentResponse::class),
             $this->factory(FulfillmentMethodResponseInterfaceFactory::class, FulfillmentMethodResponse::class),
             $this->factory(FulfillmentGroupResponseInterfaceFactory::class, FulfillmentGroupResponse::class),
@@ -242,18 +251,43 @@ class QuoteToFulfillmentResponseTest extends TestCase
     }
 
     /**
-     * The schema types this total as `fulfillment`, which a consumer adds to the order total, so it
-     * carries the incl-tax amount. It previously carried the excl-tax one and under-quoted shipping
-     * wherever shipping is taxed.
+     * The option's totals are a breakdown, so the parts have to add up to the total. Reporting only the
+     * incl-tax amount, under the `fulfillment` type, conflated the shipping charge with its tax.
      *
      * @return void
      */
-    public function testTheFulfillmentTotalCarriesTheInclTaxAmount(): void
+    public function testTheOptionsTotalsBreakTheCostDownAndAddUp(): void
     {
         $options = $this->converter->getMethods($this->address(), ['1'])[0]->getGroups()[0]->getOptions();
 
-        $this->assertSame(self::AMOUNT_INCL_TAX, $options[0]->getTotals()[0]->getAmount());
-        $this->assertNotSame(self::AMOUNT_EXCL_TAX, $options[0]->getTotals()[0]->getAmount());
+        $amounts = [];
+
+        foreach ($options[0]->getTotals() as $total) {
+            $amounts[(string) $total->getType()] = $total->getAmount();
+        }
+
+        $this->assertSame(self::AMOUNT_EXCL_TAX, $amounts['fulfillment']);
+        $this->assertSame(self::TAX_AMOUNT, $amounts['tax']);
+        $this->assertSame(self::AMOUNT_INCL_TAX, $amounts['total']);
+        $this->assertSame($amounts['total'], $amounts['fulfillment'] + $amounts['tax']);
+    }
+
+    /**
+     * @return void
+     */
+    public function testAnUntaxedOptionReportsNoTaxLine(): void
+    {
+        $converter = $this->converterFor([
+            new ShippingOption('flatrate_flatrate', 'Fixed', null, 'Flat Rate', 500, 0, 500),
+        ]);
+        $options = $converter->getMethods($this->address(), ['1'])[0]->getGroups()[0]->getOptions();
+
+        $types = array_map(
+            static fn ($total): string => (string) $total->getType(),
+            $options[0]->getTotals()
+        );
+
+        $this->assertSame(['fulfillment', 'total'], $types);
     }
 
     /**

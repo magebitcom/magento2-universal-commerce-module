@@ -26,6 +26,7 @@
             "order_id": true,
             "webhook_url": true,
             "submitted_fulfillment": true,
+            "buyer_consent": true,
             "created_at": true,
             "updated_at": true
         },

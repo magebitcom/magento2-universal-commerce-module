@@ -14,6 +14,11 @@ namespace Magebit\UniversalCommerce\Test\Unit\Model\Service\Shopping;
 
 use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
 use Magebit\UcpSpec\Api\Shopping\OrderResponseInterface;
+use Magebit\UcpSpec\Api\Shopping\OrderResponseFulfillmentInterface;
+use Magebit\UcpSpec\Api\Shopping\OrderUpdateRequestFulfillmentInterface;
+use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentEventInterface;
+use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
+use Magebit\UcpSpec\Data\Shopping\Types\Message;
 use Magebit\UcpSpec\Api\Shopping\OrderUpdateRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\AdjustmentInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
@@ -87,6 +92,85 @@ class OrderHandlerTest extends TestCase
     }
 
     /**
+     * The shipment log says what the store did, so an agent cannot write into it — but it is told so,
+     * rather than left to assume its event landed.
+     *
+     * @return void
+     */
+    public function testASubmittedShipmentEventIsRefusedInWriting(): void
+    {
+        $recorded = $this->createMock(OrderResponseInterface::class);
+        $recorded->method('getFulfillment')->willReturn($this->fulfillment(0));
+        $recorded->expects($this->once())
+            ->method('setMessages')
+            ->with($this->callback(static function (array $messages): bool {
+                return count($messages) === 1
+                    && $messages[0]->getType() === 'warning'
+                    && $messages[0]->getPath() === '$.fulfillment.events';
+            }));
+
+        $this->updateWith($recorded, submittedEvents: 1);
+    }
+
+    /**
+     * @return void
+     */
+    public function testAnUpdateThatAddsNoShipmentEventIsNotWarnedAbout(): void
+    {
+        $recorded = $this->createMock(OrderResponseInterface::class);
+        $recorded->method('getFulfillment')->willReturn($this->fulfillment(0));
+        $recorded->expects($this->never())->method('setMessages');
+
+        $this->updateWith($recorded, submittedEvents: 0);
+    }
+
+    /**
+     * @param OrderResponseInterface $recorded Order the converter reports
+     * @param int $submittedEvents How many shipment events the request carries
+     * @return void
+     */
+    private function updateWith(OrderResponseInterface $recorded, int $submittedEvents): void
+    {
+        $converter = $this->createMock(OrderToOrderResponse::class);
+        $converter->method('convert')->willReturn($recorded);
+
+        $requestFulfillment = $this->createMock(OrderUpdateRequestFulfillmentInterface::class);
+        $requestFulfillment->method('getEvents')->willReturn($this->events($submittedEvents));
+
+        $request = $this->createMock(OrderUpdateRequestInterface::class);
+        $request->method('getFulfillment')->willReturn($requestFulfillment);
+
+        $this->handler(self::CHECKOUT_ID, converter: $converter)->updateOrder(self::ORDER_ID, $request);
+    }
+
+    /**
+     * @param int $count
+     * @return OrderResponseFulfillmentInterface
+     */
+    private function fulfillment(int $count): OrderResponseFulfillmentInterface
+    {
+        $fulfillment = $this->createMock(OrderResponseFulfillmentInterface::class);
+        $fulfillment->method('getEvents')->willReturn($this->events($count));
+
+        return $fulfillment;
+    }
+
+    /**
+     * @param int $count
+     * @return FulfillmentEventInterface[]
+     */
+    private function events(int $count): array
+    {
+        $events = [];
+
+        for ($index = 0; $index < $count; $index++) {
+            $events[] = $this->createMock(FulfillmentEventInterface::class);
+        }
+
+        return $events;
+    }
+
+    /**
      * @return void
      */
     public function testAnUpdateRecordsTheAdjustmentsItCarries(): void
@@ -150,11 +234,17 @@ class OrderHandlerTest extends TestCase
             $converter->method('convert')->willReturn($this->createMock(OrderResponseInterface::class));
         }
 
+        $messageFactory = $this->createMock(MessageInterfaceFactory::class);
+        $messageFactory->method('create')->willReturnCallback(
+            static fn (array $arguments = []): Message => new Message($arguments['data'] ?? [])
+        );
+
         return new OrderHandler(
             $lookup,
             $links,
             $converter,
-            $recorder ?? $this->createMock(AdjustmentRecorder::class)
+            $recorder ?? $this->createMock(AdjustmentRecorder::class),
+            $messageFactory
         );
     }
 }

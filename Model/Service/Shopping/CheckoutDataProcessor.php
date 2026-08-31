@@ -50,6 +50,8 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
 
     public const CODE_OUT_OF_STOCK = 'out_of_stock';
 
+    public const CODE_NOT_APPLIED = 'not_applied';
+
     /**
      * @param LineItemWriter $lineItemWriter
      * @param AddressWriter $addressWriter
@@ -386,6 +388,17 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
         $couponCode = trim($codes[0]);
         if (empty($couponCode)) {
             return;
+        }
+
+        // Magento carries one coupon per cart, so anything past the first is reported rather than
+        // dropped: an agent that sent two codes has to be told which one counted.
+        foreach (array_slice(array_values($codes), 1) as $index => $unused) {
+            $this->addMessage(
+                $cart,
+                self::CODE_NOT_APPLIED,
+                sprintf('$.discounts.codes[%d]', $index + 1),
+                sprintf('This store applies one discount code at a time, so "%s" was not applied.', $unused)
+            );
         }
 
         try {
