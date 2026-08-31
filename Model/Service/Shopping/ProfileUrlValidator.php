@@ -34,6 +34,14 @@ class ProfileUrlValidator
     ];
 
     /**
+     * @param TrustedProfileOrigins $trustedOrigins
+     */
+    public function __construct(
+        private readonly TrustedProfileOrigins $trustedOrigins
+    ) {
+    }
+
+    /**
      * Resolve the host and confirm every address it maps to is publicly routable.
      *
      * Returns the resolved addresses so the caller can pin them for the request
@@ -51,28 +59,46 @@ class ProfileUrlValidator
             throw new InvalidArgumentException('Profile URL is not a valid absolute URL.');
         }
 
-        if (!in_array(strtolower($parts['scheme']), self::ALLOWED_SCHEMES, true)) {
-            throw new InvalidArgumentException('Profile URL scheme is not allowed.');
-        }
-
         if (isset($parts['user']) || isset($parts['pass'])) {
             throw new InvalidArgumentException('Profile URL must not carry credentials.');
+        }
+
+        // An origin the deployment has named stays subject to resolution, but not to the scheme, port
+        // and routability rules — those are what stand in the way of an agent on the same network.
+        if ($this->trustedOrigins->trusts($url)) {
+            return $this->assertResolves($parts['host']);
+        }
+
+        if (!in_array(strtolower($parts['scheme']), self::ALLOWED_SCHEMES, true)) {
+            throw new InvalidArgumentException('Profile URL scheme is not allowed.');
         }
 
         if (isset($parts['port']) && !in_array($parts['port'], self::ALLOWED_PORTS, true)) {
             throw new InvalidArgumentException('Profile URL port is not allowed.');
         }
 
-        $addresses = $this->resolve($parts['host']);
-
-        if ($addresses === []) {
-            throw new InvalidArgumentException('Profile URL host does not resolve.');
-        }
+        $addresses = $this->assertResolves($parts['host']);
 
         foreach ($addresses as $address) {
             if (!$this->isPubliclyRoutable($address)) {
                 throw new InvalidArgumentException('Profile URL resolves to a non-public address.');
             }
+        }
+
+        return $addresses;
+    }
+
+    /**
+     * @param string $host
+     * @return string[]
+     * @throws InvalidArgumentException When the host names nothing
+     */
+    private function assertResolves(string $host): array
+    {
+        $addresses = $this->resolve($host);
+
+        if ($addresses === []) {
+            throw new InvalidArgumentException('Profile URL host does not resolve.');
         }
 
         return $addresses;
@@ -93,18 +119,22 @@ class ProfileUrlValidator
         // An unresolvable host is an expected outcome here, not an error worth emitting.
         // phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged
         $records = @dns_get_record($host, DNS_A | DNS_AAAA);
-
-        if ($records === false) {
-            return [];
-        }
-
         $addresses = [];
 
-        foreach ($records as $record) {
+        foreach ($records === false ? [] : $records as $record) {
             $addresses[] = $record['ip'] ?? $record['ipv6'] ?? null;
         }
 
-        return array_values(array_filter($addresses, 'is_string'));
+        // dns_get_record asks the name servers only, so it never sees a name from the hosts file. Those
+        // count too: an address the fetch would reach has to be an address that was checked.
+        // phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged
+        $resolved = @gethostbynamel($host);
+
+        foreach ($resolved === false ? [] : $resolved as $address) {
+            $addresses[] = $address;
+        }
+
+        return array_values(array_unique(array_filter($addresses, 'is_string')));
     }
 
     /**

@@ -14,11 +14,15 @@ namespace Magebit\UniversalCommerce\Test\Unit\Model\Service\Shopping;
 
 use InvalidArgumentException;
 use Magebit\UniversalCommerce\Model\Service\Shopping\ProfileUrlValidator;
+use Magebit\UniversalCommerce\Model\Service\Shopping\TrustedProfileOrigins;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 class ProfileUrlValidatorTest extends TestCase
 {
     /** @var ProfileUrlValidator */
+    private TrustedProfileOrigins&MockObject $trustedOrigins;
+
     private ProfileUrlValidator $validator;
 
     /**
@@ -26,7 +30,8 @@ class ProfileUrlValidatorTest extends TestCase
      */
     protected function setUp(): void
     {
-        $this->validator = new ProfileUrlValidator();
+        $this->trustedOrigins = $this->createMock(TrustedProfileOrigins::class);
+        $this->validator = new ProfileUrlValidator($this->trustedOrigins);
     }
 
     /**
@@ -101,5 +106,36 @@ class ProfileUrlValidatorTest extends TestCase
             ['2606:2800:220:1:248:1893:25c8:1946'],
             $this->validator->assertFetchable('https://[2606:2800:220:1:248:1893:25c8:1946]/p.json')
         );
+    }
+
+    /**
+     * An origin the deployment named is reachable even where the guard would refuse it — that is what
+     * the setting is for. It still has to resolve.
+     *
+     * @return void
+     */
+    public function testAnOriginTheDeploymentTrustsIsAccepted(): void
+    {
+        $this->trustedOrigins->method('trusts')->willReturn(true);
+
+        $this->assertSame(
+            ['127.0.0.1'],
+            $this->validator->assertFetchable('http://127.0.0.1:8285/profile.json')
+        );
+    }
+
+    /**
+     * Credentials in the URL stay refused whether the origin is trusted or not: a profile fetch has no
+     * business carrying them.
+     *
+     * @return void
+     */
+    public function testATrustedOriginStillMayNotCarryCredentials(): void
+    {
+        $this->trustedOrigins->method('trusts')->willReturn(true);
+
+        $this->expectException(InvalidArgumentException::class);
+
+        $this->validator->assertFetchable('http://user:pass@127.0.0.1:8285/profile.json');
     }
 }

@@ -35,13 +35,13 @@ class DispatchWebhooks
     }
 
     /**
-     * @return void
+     * @return int How many deliveries went out
      */
-    public function execute(): void
+    public function execute(): int
     {
         // Checked before querying so a merchant who has not enabled delivery pays nothing for the cron.
         if (!$this->config->areWebhooksEnabled()) {
-            return;
+            return 0;
         }
 
         try {
@@ -50,11 +50,15 @@ class DispatchWebhooks
             if ($delivered > 0) {
                 $this->logger->info(sprintf('Delivered %d order event webhook(s).', $delivered));
             }
+
+            return $delivered;
         } catch (\Exception $exception) {
             $this->logger->error(
                 sprintf('Error dispatching order event webhooks: %s', $exception->getMessage()),
                 ['exception' => $exception]
             );
+
+            return 0;
         }
     }
 }

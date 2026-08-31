@@ -192,6 +192,7 @@
         <arguments>
             <argument name="commands" xsi:type="array">
                 <item name="SeedUcpConformance" xsi:type="object">Magebit\UniversalCommerce\Console\Command\SeedConformance</item>
+                <item name="DispatchUcpWebhooks" xsi:type="object">Magebit\UniversalCommerce\Console\Command\DispatchWebhooks</item>
             </argument>
         </arguments>
     </type>
