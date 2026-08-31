@@ -115,6 +115,20 @@ class RequestClassBuilder
             return $this;
         }
 
+        // A getter typed as a plain array or as mixed is a free-form map the spec deliberately leaves
+        // open — a payment instrument's `display`, for one. Its value is passed through, because there
+        // is no class to build it into.
+        $normalizedType = $this->typeProcessor->normalizeType($returnType);
+
+        if (
+            $normalizedType === 'array'
+            || $normalizedType === TypeProcessor::NORMALIZED_ANY_TYPE
+            || str_starts_with((string) $normalizedType, 'array<')
+        ) {
+            $dataObject->$methodName($value);
+            return $this;
+        }
+
         if ($this->typeProcessor->isArrayType($returnType)) {
             $type = $this->typeProcessor->getArrayItemType($returnType);
             $objects = [];

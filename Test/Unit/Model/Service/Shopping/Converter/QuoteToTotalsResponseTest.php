@@ -215,11 +215,79 @@ class QuoteToTotalsResponseTest extends TestCase
     }
 
     /**
+     * Magento takes a coupon off the grand total without always emitting a discount row to go with it.
+     * Left alone the response shows a cheaper order with nothing to explain it.
+     *
+     * @return void
+     */
+    public function testADiscountOnTheAddressIsReportedWhenMagentoEmitsNoRow(): void
+    {
+        $quote = $this->quote([
+            ['subtotal', 'Subtotal', 20.00],
+            ['grand_total', 'Grand Total', 18.00],
+        ], addressDiscount: -2.00);
+
+        $totals = $this->converter->convert($quote);
+        $discount = $this->byType($totals, TotalTypeInterface::TYPE_DISCOUNT);
+
+        $this->assertNotNull($discount, 'the discount was dropped from the response');
+        $this->assertSame(-200, $discount->getAmount());
+    }
+
+    /**
+     * @return void
+     */
+    public function testTheAddressDiscountIsIgnoredWhenMagentoAlreadyEmittedOne(): void
+    {
+        $quote = $this->quote([
+            ['subtotal', 'Subtotal', 20.00],
+            ['discount', 'Discount (10OFF)', -2.00],
+            ['grand_total', 'Grand Total', 18.00],
+        ], addressDiscount: -2.00);
+
+        $discount = $this->byType($this->converter->convert($quote), TotalTypeInterface::TYPE_DISCOUNT);
+
+        $this->assertNotNull($discount);
+        $this->assertSame(-200, $discount->getAmount());
+        $this->assertSame('Discount (10OFF)', $discount->getDisplayText());
+    }
+
+    /**
+     * @return void
+     */
+    public function testNoDiscountTotalWhenNothingWasDiscounted(): void
+    {
+        $quote = $this->quote([
+            ['subtotal', 'Subtotal', 20.00],
+            ['grand_total', 'Grand Total', 20.00],
+        ]);
+
+        $this->assertNull($this->byType($this->converter->convert($quote), TotalTypeInterface::TYPE_DISCOUNT));
+    }
+
+    /**
+     * @param array<TotalResponseInterface> $totals
+     * @param string $type
+     * @return TotalResponseInterface|null
+     */
+    private function byType(array $totals, string $type): ?TotalResponseInterface
+    {
+        foreach ($totals as $total) {
+            if ($total->getType() === $type) {
+                return $total;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param array<array{0: string, 1: string, 2: float}> $rows
      * @param float $addressSubtotal
+     * @param float $addressDiscount Discount Magento stored on the address
      * @return Quote&MockObject
      */
-    private function quote(array $rows, float $addressSubtotal = 0.0): Quote
+    private function quote(array $rows, float $addressSubtotal = 0.0, float $addressDiscount = 0.0): Quote
     {
         $totals = [];
 
@@ -233,9 +301,10 @@ class QuoteToTotalsResponseTest extends TestCase
         // getSubtotal() on a quote address resolves through __call, so it must be added.
         $address = $this->getMockBuilder(Address::class)
             ->disableOriginalConstructor()
-            ->addMethods(['getSubtotal'])
+            ->addMethods(['getSubtotal', 'getDiscountAmount'])
             ->getMock();
         $address->method('getSubtotal')->willReturn($addressSubtotal);
+        $address->method('getDiscountAmount')->willReturn($addressDiscount);
 
         $quote = $this->getMockBuilder(Quote::class)
             ->disableOriginalConstructor()

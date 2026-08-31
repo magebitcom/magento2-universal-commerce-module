@@ -123,6 +123,18 @@ class QuoteToTotalsResponse
             $amounts[TotalTypeInterface::TYPE_TOTAL] = abs((float) $cart->getGrandTotal());
         }
 
+        // Magento reduces the grand total by a coupon without always emitting a discount row to go with
+        // it, which would leave the response showing a cheaper order for no stated reason. The amount is
+        // read off the address instead.
+        if (!isset($amounts[TotalTypeInterface::TYPE_DISCOUNT])) {
+            $address = $cart->getIsVirtual() ? $cart->getBillingAddress() : $cart->getShippingAddress();
+            $discount = abs((float) $address->getDiscountAmount());
+
+            if ($discount > 0.0) {
+                $amounts[TotalTypeInterface::TYPE_DISCOUNT] = $discount;
+            }
+        }
+
         return $amounts;
     }
 
