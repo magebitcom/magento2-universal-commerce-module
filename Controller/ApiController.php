@@ -26,13 +26,16 @@ use Magebit\UniversalCommerce\Model\RequestClassBuilder;
 use Magebit\UcpSpec\Api\Shopping\Types\ErrorResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageErrorInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageErrorInterfaceFactory;
+use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
 use Magebit\UcpSpec\Api\UcpErrorInterface;
 use Magebit\UniversalCommerce\Api\UniversalCommerceProtocolInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
+use Magebit\UniversalCommerce\Exception\UcpMessagesException;
 use Magento\Framework\App\Request\Http;
 use Magento\Framework\Exception\LocalizedException;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
 use Psr\Log\LoggerInterface;
 
 abstract class ApiController implements ActionInterface, CsrfAwareActionInterface
@@ -43,6 +46,11 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
     public const HEADER_REQUEST_ID = 'Request-Id';
 
     /**
+     * Header the agent identifies itself with, and names the protocol version it expects.
+     */
+    public const HEADER_AGENT = 'UCP-Agent';
+
+    /**
      * @param JsonFactory $resultJsonFactory
      * @param RequestInterface $request
      * @param RequestValidator $requestValidator
@@ -51,6 +59,7 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
      * @param MessageErrorInterfaceFactory $messageFactory
      * @param IdempotencyHandler $idempotencyHandler
      * @param LoggerInterface $logger
+     * @param VersionNegotiator $versionNegotiator
      */
     public function __construct(
         protected readonly JsonFactory $resultJsonFactory,
@@ -60,7 +69,8 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
         protected readonly Config $config,
         protected readonly MessageErrorInterfaceFactory $messageFactory,
         protected readonly IdempotencyHandler $idempotencyHandler,
-        protected readonly LoggerInterface $logger
+        protected readonly LoggerInterface $logger,
+        protected readonly VersionNegotiator $versionNegotiator
     ) {
     }
 
@@ -74,6 +84,7 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
     {
         try {
             $this->assertRequestId();
+            $this->assertSupportedVersion();
 
             return $callback();
         } catch (UcpException $e) {
@@ -81,6 +92,8 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
                 [$this->errorMessage($e->getErrorCode(), $e->getMessage())],
                 $e->getStatusCode()
             );
+        } catch (UcpMessagesException $e) {
+            return $this->makeErrorResponse($e->getMessages(), $e->getStatusCode());
         } catch (LocalizedException $e) {
             return $this->makeErrorResponse(
                 [$this->errorMessage('invalid_request', $e->getMessage())],
@@ -128,9 +141,18 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
     public function handleIdempotency(): ?ResultJson
     {
         try {
+            // Checked before a stored response can be replayed: an agent that cannot read this
+            // version's payloads cannot read the replayed one either.
+            $this->assertSupportedVersion();
+
             if ($idempotencyResponse = $this->idempotencyHandler->handle($this->getHttpRequest())) {
                 return $idempotencyResponse;
             }
+        } catch (UcpException $e) {
+            return $this->makeErrorResponse(
+                [$this->errorMessage($e->getErrorCode(), $e->getMessage())],
+                $e->getStatusCode()
+            );
         } catch (LocalizedException $e) {
             return $this->makeErrorResponse(
                 [$this->errorMessage('invalid_request', $e->getMessage())],
@@ -161,6 +183,17 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
         }
 
         return $this->makeErrorResponse($messages, 400);
+    }
+
+    /**
+     * @return void
+     * @throws UcpException If the agent asked for a version this store does not speak
+     */
+    protected function assertSupportedVersion(): void
+    {
+        $header = $this->getHttpRequest()->getHeader(self::HEADER_AGENT);
+
+        $this->versionNegotiator->assertSupported(is_string($header) ? $header : null);
     }
 
     /**
@@ -277,7 +310,7 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
      * belongs to the UCP metadata, and the per-message severity says what the platform may do next.
      * Keyed off the generated constants so a schema rename fails the build rather than the wire.
      *
-     * @param array<MessageErrorInterface> $messages
+     * @param array<MessageErrorInterface|MessageInterface> $messages
      * @param int $statusCode
      * @return ResultJson
      */

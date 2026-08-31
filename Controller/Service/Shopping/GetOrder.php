@@ -16,6 +16,7 @@ use Magebit\UniversalCommerce\Api\Service\Shopping\OrderHandlerInterface;
 use Magebit\UniversalCommerce\Controller\ApiController;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
 use Magebit\UniversalCommerce\Model\RequestClassBuilder;
 use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
 use Magento\Framework\App\RequestInterface;
@@ -36,6 +37,7 @@ class GetOrder extends ApiController
         MessageErrorInterfaceFactory $messageFactory,
         IdempotencyHandler $idempotencyHandler,
         LoggerInterface $logger,
+        VersionNegotiator $versionNegotiator,
         private readonly OrderHandlerInterface $orderHandler
     ) {
         parent::__construct(
@@ -46,7 +48,8 @@ class GetOrder extends ApiController
             $config,
             $messageFactory,
             $idempotencyHandler,
-            $logger
+            $logger,
+            $versionNegotiator
         );
     }
 

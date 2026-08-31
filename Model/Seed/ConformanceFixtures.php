@@ -45,6 +45,11 @@ class ConformanceFixtures
     private const DEFAULT_ATTRIBUTE_SET_ID = 4;
 
     /**
+     * Well above anything the conformance run asks for, so stock is always the binding limit.
+     */
+    private const MAX_SALE_QTY = 1000000;
+
+    /**
      * Fixed prices, so the conformance run can assert exact totals.
      *
      * @var array<int, array{sku: string, name: string, price: float, in_stock: bool, qty: int}>
@@ -188,6 +193,10 @@ class ConformanceFixtures
             'use_config_manage_stock' => 1,
             'is_in_stock' => $definition['in_stock'] ? 1 : 0,
             'qty' => $definition['qty'],
+            // The conformance run asks for far more units than the store has, to see stock refuse it.
+            // Magento's default cart cap of 10,000 would answer first and hide that, so it is lifted.
+            'use_config_max_sale_qty' => 0,
+            'max_sale_qty' => self::MAX_SALE_QTY,
         ]);
 
         $this->productRepository->save($product);

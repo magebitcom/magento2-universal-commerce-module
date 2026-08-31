@@ -46,6 +46,8 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
 
     public const CODE_INVALID = 'invalid';
 
+    public const CODE_NOT_FOUND = 'not_found';
+
     public const CODE_OUT_OF_STOCK = 'out_of_stock';
 
     /**
@@ -254,7 +256,7 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
             LineItemOutcome::Added => null,
             LineItemOutcome::NotFound => $this->addMessage(
                 $cart,
-                self::CODE_INVALID,
+                self::CODE_NOT_FOUND,
                 $path,
                 sprintf('Product "%s" does not exist.', $result->sku)
             ),
@@ -263,6 +265,18 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
                 self::CODE_OUT_OF_STOCK,
                 $path,
                 sprintf('Product "%s" is not available for purchase.', $result->sku)
+            ),
+            LineItemOutcome::InsufficientStock => $this->addMessage(
+                $cart,
+                self::CODE_OUT_OF_STOCK,
+                $path,
+                $result->reason ?? sprintf('Product "%s" is not available in that quantity.', $result->sku)
+            ),
+            LineItemOutcome::InvalidQuantity => $this->addMessage(
+                $cart,
+                self::CODE_INVALID,
+                $path,
+                $result->reason ?? sprintf('Product "%s" cannot be bought in that quantity.', $result->sku)
             ),
             LineItemOutcome::Rejected => $this->addMessage(
                 $cart,

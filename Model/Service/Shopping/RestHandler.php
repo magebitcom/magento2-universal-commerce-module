@@ -23,6 +23,10 @@ use Magento\Quote\Api\GuestCartManagementInterface;
 use Magento\Quote\Api\GuestCartRepositoryInterface;
 use Magento\Quote\Api\Data\CartInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
+use Magebit\UniversalCommerce\Exception\UcpMessagesException;
+use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
+use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
+use Magebit\UniversalCommerce\Api\Service\Shopping\QuoteValidatorInterface;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Quote\Api\CartRepositoryInterface;
@@ -53,6 +57,9 @@ class RestHandler implements RestHandlerInterface
      * @param OrderRepositoryInterface $orderRepository
      * @param OrderEventNotifier $orderEventNotifier
      * @param PlacementNote $placementNote
+     * @param CheckoutGuard $checkoutGuard
+     * @param QuoteValidatorInterface $quoteValidator
+     * @param MessageInterfaceFactory $messageFactory
      */
     public function __construct(
         protected readonly CheckoutDataProcessor $checkoutDataProcessor,
@@ -66,7 +73,10 @@ class RestHandler implements RestHandlerInterface
         protected readonly OrderLinkRepositoryInterface $orderLinkRepository,
         protected readonly OrderRepositoryInterface $orderRepository,
         protected readonly OrderEventNotifier $orderEventNotifier,
-        protected readonly PlacementNote $placementNote
+        protected readonly PlacementNote $placementNote,
+        protected readonly CheckoutGuard $checkoutGuard,
+        protected readonly QuoteValidatorInterface $quoteValidator,
+        protected readonly MessageInterfaceFactory $messageFactory
     ) {
     }
 
@@ -106,6 +116,14 @@ class RestHandler implements RestHandlerInterface
     {
         $cart = $this->getCartByMaskedId($checkoutId);
 
+        if ($this->checkoutGuard->isCompleted($cart, $checkoutId)) {
+            throw new UcpException(
+                __('Checkout session %1 is already completed and can no longer be canceled.', $checkoutId),
+                CheckoutGuard::CODE_COMPLETED,
+                409
+            );
+        }
+
         if (!$cart->getIsActive()) {
             throw new UcpException(
                 __('Checkout session is already canceled: %1.', $checkoutId),
@@ -128,6 +146,7 @@ class RestHandler implements RestHandlerInterface
     public function updateCheckout(string $checkoutId, CheckoutUpdateRequestInterface $request): CheckoutResponseInterface
     {
         $cart = $this->getCartByMaskedId($checkoutId);
+        $this->checkoutGuard->assertOpen($cart, $checkoutId);
         $this->checkoutDataProcessor->processUpdateCheckoutRequest($cart, $request, $checkoutId);
         $this->cartRepository->save($cart);
         $this->rememberSubmittedFulfillment($checkoutId, $request->getFulfillment());
@@ -164,7 +183,13 @@ class RestHandler implements RestHandlerInterface
         try {
             $orderId = (int) $this->guestCartManagement->placeOrder($checkoutId);
         } catch (LocalizedException $e) {
-            throw new LocalizedException(__('Failed to place order: %1', $e->getMessage()));
+            // A refused order is the agent's to fix, so it reports as a 4xx naming every blocker rather
+            // than as a server error with one Magento sentence the agent can do nothing with.
+            throw new UcpMessagesException(
+                __('The checkout session could not be completed: %1', $e->getMessage()),
+                $this->completionBlockers($cart, $e->getMessage()),
+                422
+            );
         }
 
         $this->linkOrder($checkoutId, $orderId);
@@ -179,6 +204,31 @@ class RestHandler implements RestHandlerInterface
         }
 
         return $this->quoteToCheckoutResponse->convert($cart, $checkoutId);
+    }
+
+    /**
+     * Everything standing between this checkout and an order. The store's own refusal is kept as the
+     * last message, so nothing is lost when the readiness checks saw no problem.
+     *
+     * @param CartInterface $cart
+     * @param string $refusal Wording Magento refused the order with
+     * @return MessageInterface[]
+     */
+    protected function completionBlockers(CartInterface $cart, string $refusal): array
+    {
+        $messages = $this->quoteValidator->validate($cart) ?? [];
+
+        /** @var MessageInterface $message */
+        $message = $this->messageFactory->create(['data' => [
+            MessageInterface::KEY_TYPE => 'error',
+            MessageInterface::KEY_CODE => 'invalid_request',
+            MessageInterface::KEY_SEVERITY => MessageInterface::SEVERITY_REQUIRES_BUYER_INPUT,
+            MessageInterface::KEY_CONTENT => $refusal,
+        ]]);
+
+        $messages[] = $message;
+
+        return $messages;
     }
 
     /**

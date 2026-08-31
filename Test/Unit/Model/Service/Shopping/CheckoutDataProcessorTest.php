@@ -297,7 +297,7 @@ class CheckoutDataProcessorTest extends TestCase
 
         $this->assertCount(1, $this->createdMessages);
         $this->assertSame('error', $this->createdMessages[0]['type']);
-        $this->assertSame(CheckoutDataProcessor::CODE_INVALID, $this->createdMessages[0]['code']);
+        $this->assertSame(CheckoutDataProcessor::CODE_NOT_FOUND, $this->createdMessages[0]['code']);
         $this->assertSame('$.line_items[0].item.id', $this->createdMessages[0]['path']);
         $this->assertSame(MessageInterface::SEVERITY_RECOVERABLE, $this->createdMessages[0]['severity']);
         $this->assertStringContainsString('NO-SUCH-SKU', $this->createdMessages[0]['content']);
@@ -334,6 +334,40 @@ class CheckoutDataProcessorTest extends TestCase
         $this->assertCount(1, $this->createdMessages);
         $this->assertSame(CheckoutDataProcessor::CODE_INVALID, $this->createdMessages[0]['code']);
         $this->assertSame('Requested qty is not available', $this->createdMessages[0]['content']);
+    }
+
+    /**
+     * @return void
+     */
+    public function testProcessLineItemsReportsAQuantityTheStoreCannotSupplyAsOutOfStock(): void
+    {
+        $quote = $this->createQuote();
+        $this->writerReturns([
+            new LineItemResult(0, '24-MB04', LineItemOutcome::InsufficientStock, 'Only 3 left'),
+        ]);
+
+        $this->processor->processLineItems($quote, [$this->createLineItem('24-MB04', 99)]);
+
+        $this->assertCount(1, $this->createdMessages);
+        $this->assertSame(CheckoutDataProcessor::CODE_OUT_OF_STOCK, $this->createdMessages[0]['code']);
+        $this->assertSame('Only 3 left', $this->createdMessages[0]['content']);
+    }
+
+    /**
+     * @return void
+     */
+    public function testProcessLineItemsReportsAQuantityTheStoreWillNotSellInAsInvalid(): void
+    {
+        $quote = $this->createQuote();
+        $this->writerReturns([
+            new LineItemResult(0, '24-MB04', LineItemOutcome::InvalidQuantity, 'The fewest you may purchase is 5.'),
+        ]);
+
+        $this->processor->processLineItems($quote, [$this->createLineItem('24-MB04', 1)]);
+
+        $this->assertCount(1, $this->createdMessages);
+        $this->assertSame(CheckoutDataProcessor::CODE_INVALID, $this->createdMessages[0]['code']);
+        $this->assertSame('The fewest you may purchase is 5.', $this->createdMessages[0]['content']);
     }
 
     /**

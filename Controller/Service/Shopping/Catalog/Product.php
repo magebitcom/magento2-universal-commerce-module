@@ -17,6 +17,7 @@ use Magebit\UniversalCommerce\Api\Service\Shopping\CatalogHandlerInterface;
 use Magebit\UniversalCommerce\Controller\ApiController;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
 use Magebit\UniversalCommerce\Model\RequestClassBuilder;
 use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
 use Magento\Framework\App\RequestInterface;
@@ -49,6 +50,7 @@ class Product extends ApiController
         MessageErrorInterfaceFactory $messageFactory,
         IdempotencyHandler $idempotencyHandler,
         LoggerInterface $logger,
+        VersionNegotiator $versionNegotiator,
         protected readonly CatalogHandlerInterface $catalogHandler
     ) {
         parent::__construct(
@@ -59,7 +61,8 @@ class Product extends ApiController
             $config,
             $messageFactory,
             $idempotencyHandler,
-            $logger
+            $logger,
+            $versionNegotiator
         );
     }
 

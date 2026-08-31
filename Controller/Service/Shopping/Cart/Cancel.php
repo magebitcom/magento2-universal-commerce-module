@@ -17,6 +17,7 @@ use Magebit\UniversalCommerce\Api\Service\Shopping\CartHandlerInterface;
 use Magebit\UniversalCommerce\Controller\ApiController;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
 use Magebit\UniversalCommerce\Model\RequestClassBuilder;
 use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
 use Magento\Framework\App\RequestInterface;
@@ -48,6 +49,7 @@ class Cancel extends ApiController
         MessageErrorInterfaceFactory $messageFactory,
         IdempotencyHandler $idempotencyHandler,
         LoggerInterface $logger,
+        VersionNegotiator $versionNegotiator,
         protected readonly CartHandlerInterface $cartHandler
     ) {
         parent::__construct(
@@ -58,7 +60,8 @@ class Cancel extends ApiController
             $config,
             $messageFactory,
             $idempotencyHandler,
-            $logger
+            $logger,
+            $versionNegotiator
         );
     }
 

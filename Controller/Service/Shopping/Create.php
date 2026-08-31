@@ -24,6 +24,7 @@ use Magebit\UniversalCommerce\Model\Validation\ValidationResult;
 use Magebit\UniversalCommerce\Model\RequestClassBuilder;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
 use Psr\Log\LoggerInterface;
 use JsonSerializable;
 use Magento\Framework\Exception\LocalizedException;
@@ -39,6 +40,7 @@ class Create extends ApiController
         MessageErrorInterfaceFactory $messageFactory,
         IdempotencyHandler $idempotencyHandler,
         LoggerInterface $logger,
+        VersionNegotiator $versionNegotiator,
         protected readonly CheckoutCreateRequestInterfaceFactory $checkoutCreateRequestFactory,
         protected readonly RestHandlerInterface $restHandler
     ) {
@@ -50,7 +52,8 @@ class Create extends ApiController
             $config,
             $messageFactory,
             $idempotencyHandler,
-            $logger
+            $logger,
+            $versionNegotiator
         );
     }
 

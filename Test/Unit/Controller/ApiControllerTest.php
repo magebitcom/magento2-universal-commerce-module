@@ -21,6 +21,7 @@ use Magebit\UniversalCommerce\Controller\ApiController;
 use Magebit\UniversalCommerce\Test\Unit\SchemaAssert;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
 use Magebit\UniversalCommerce\Model\RequestClassBuilder;
 use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
 use Magento\Framework\App\Request\Http;
@@ -156,7 +157,11 @@ class ApiControllerTest extends TestCase
     private function controller(?string $requestId, bool $required = true): ApiController
     {
         $request = $this->createMock(Http::class);
-        $request->method('getHeader')->willReturn($requestId ?? false);
+        $request->method('getHeader')->willReturnCallback(
+            static fn (string $name): string|false => $name === ApiController::HEADER_REQUEST_ID
+                ? ($requestId ?? false)
+                : false
+        );
 
         $config = $this->createMock(Config::class);
         $config->method('isRequestIdRequired')->willReturn($required);
@@ -175,7 +180,8 @@ class ApiControllerTest extends TestCase
             $config,
             $messageFactory,
             $this->createMock(IdempotencyHandler::class),
-            $this->createMock(LoggerInterface::class)
+            $this->createMock(LoggerInterface::class),
+            new VersionNegotiator()
         ) extends ApiController {
             /**
              * @return ResultJson

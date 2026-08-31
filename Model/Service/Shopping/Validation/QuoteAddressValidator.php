@@ -39,6 +39,10 @@ class QuoteAddressValidator implements QuoteValidatorInterface
         /** @var Quote $quote */
         $errors = [];
 
+        if (!$quote->getCustomerEmail()) {
+            $errors[] = $this->createMessage('An email address is required', '$.buyer.email');
+        }
+
         $errors = array_merge($errors, $this->validateBillingAddress($quote));
         $errors = array_merge($errors, $this->validateShippingAddress($quote));
 

@@ -20,6 +20,7 @@ use Magebit\UniversalCommerce\Api\Service\Shopping\CartHandlerInterface;
 use Magebit\UniversalCommerce\Controller\ApiController;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
 use Magebit\UniversalCommerce\Model\RequestClassBuilder;
 use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
 use Magento\Framework\App\RequestInterface;
@@ -52,6 +53,7 @@ class Update extends ApiController
         MessageErrorInterfaceFactory $messageFactory,
         IdempotencyHandler $idempotencyHandler,
         LoggerInterface $logger,
+        VersionNegotiator $versionNegotiator,
         protected readonly CheckoutUpdateRequestInterfaceFactory $cartUpdateRequestFactory,
         protected readonly CartHandlerInterface $cartHandler
     ) {
@@ -63,7 +65,8 @@ class Update extends ApiController
             $config,
             $messageFactory,
             $idempotencyHandler,
-            $logger
+            $logger,
+            $versionNegotiator
         );
     }
 

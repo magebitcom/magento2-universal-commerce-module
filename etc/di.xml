@@ -63,6 +63,7 @@
         <arguments>
             <argument name="validators" xsi:type="array">
                 <item name="quote_address_validator" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Validation\QuoteAddressValidator</item>
+                <item name="quote_fulfillment_validator" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Validation\QuoteFulfillmentValidator</item>
                 <item name="checkout_data_processor" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\CheckoutDataProcessor</item>
             </argument>
         </arguments>

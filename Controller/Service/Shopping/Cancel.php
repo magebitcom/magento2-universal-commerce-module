@@ -22,6 +22,7 @@ use Magebit\UniversalCommerce\Model\Validation\ValidationResult;
 use Magebit\UniversalCommerce\Model\RequestClassBuilder;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
 use Psr\Log\LoggerInterface;
 use JsonSerializable;
 use Magento\Framework\Exception\LocalizedException;
@@ -37,6 +38,7 @@ class Cancel extends ApiController
         MessageErrorInterfaceFactory $messageFactory,
         IdempotencyHandler $idempotencyHandler,
         LoggerInterface $logger,
+        VersionNegotiator $versionNegotiator,
         protected readonly RestHandlerInterface $restHandler
     ) {
         parent::__construct(
@@ -47,7 +49,8 @@ class Cancel extends ApiController
             $config,
             $messageFactory,
             $idempotencyHandler,
-            $logger
+            $logger,
+            $versionNegotiator
         );
     }
 

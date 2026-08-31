@@ -204,14 +204,38 @@ class QuoteToCheckoutResponse
      */
     public function getStatus(CartInterface $quote, array $validationErrors, bool $hasOrder = false): string
     {
-        $state = $this->stateResolver->resolve($quote, $hasOrder, $validationErrors !== []);
+        $state = $this->stateResolver->resolve(
+            $quote,
+            $hasOrder,
+            $validationErrors !== [],
+            $this->needsBuyer($validationErrors)
+        );
 
         return match ($state) {
             CheckoutState::Completed => CheckoutResponseInterface::STATUS_COMPLETED,
             CheckoutState::Canceled => CheckoutResponseInterface::STATUS_CANCELED,
             CheckoutState::Incomplete => CheckoutResponseInterface::STATUS_INCOMPLETE,
+            CheckoutState::RequiresEscalation => CheckoutResponseInterface::STATUS_REQUIRES_ESCALATION,
             CheckoutState::Ready => CheckoutResponseInterface::STATUS_READY_FOR_COMPLETE,
         };
+    }
+
+    /**
+     * The spec ties escalation to severity: any error the buyer has to answer puts the whole session in
+     * `requires_escalation`, which is what tells the platform to hand off to the continue url.
+     *
+     * @param MessageInterface[] $validationErrors
+     * @return bool
+     */
+    public function needsBuyer(array $validationErrors): bool
+    {
+        foreach ($validationErrors as $message) {
+            if (str_starts_with((string) $message->getSeverity(), 'requires_')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
