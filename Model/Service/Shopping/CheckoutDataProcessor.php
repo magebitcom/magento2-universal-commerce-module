@@ -100,6 +100,7 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
             $this->processFulfillmentInformation($cart, $request->getFulfillment());
         }
 
+        $this->fillBillingFromShipping($cart);
         $this->resolveBillingCountry($cart);
 
         if ($request->getDiscounts()) {
@@ -133,6 +134,7 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
             $this->processFulfillmentInformation($cart, $request->getFulfillment());
         }
 
+        $this->fillBillingFromShipping($cart);
         $this->resolveBillingCountry($cart);
 
         if ($request->getDiscounts()) {
@@ -287,6 +289,30 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
                 $result->reason ?? sprintf('Product "%s" could not be added.', $result->sku)
             ),
         };
+    }
+
+    /**
+     * A store bills where it ships unless the agent named a billing address of its own — the same thing
+     * a storefront does when the buyer leaves "same as shipping" ticked. Without it a checkout that
+     * carries only a destination has no billing address at all, and Magento refuses the order.
+     *
+     * @param CartInterface $cart
+     * @return void
+     */
+    public function fillBillingFromShipping(CartInterface $cart): void
+    {
+        /** @var Quote $cart */
+        if ($cart->getIsVirtual()) {
+            return;
+        }
+
+        $billingAddress = $cart->getBillingAddress();
+
+        if (trim((string) $billingAddress->getStreetLine(1)) !== '') {
+            return;
+        }
+
+        $this->personalInformationCopier->copyPostalFields($cart->getShippingAddress(), $billingAddress);
     }
 
     /**

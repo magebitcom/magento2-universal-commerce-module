@@ -273,6 +273,27 @@ class QuoteToFulfillmentResponseTest extends TestCase
     }
 
     /**
+     * An agent that submitted a method with no destination has to see it come back, or it cannot tell
+     * whether the store understood the request.
+     *
+     * @return void
+     */
+    public function testASubmittedMethodComesBackEvenWithNothingToOfferYet(): void
+    {
+        $converter = $this->converterFor([]);
+
+        $methods = $converter->getMethods($this->address(), ['1'], [
+            'id' => 'agent_method_1',
+            'type' => FulfillmentMethodResponseInterface::TYPE_SHIPPING,
+        ]);
+
+        $this->assertCount(1, $methods);
+        $this->assertSame('agent_method_1', $methods[0]->getId());
+        $this->assertSame([], $methods[0]->getGroups()[0]->getOptions() ?? []);
+        $this->assertNull($methods[0]->getGroups()[0]->getSelectedOptionId());
+    }
+
+    /**
      * @return void
      */
     public function testAnUntaxedOptionReportsNoTaxLine(): void

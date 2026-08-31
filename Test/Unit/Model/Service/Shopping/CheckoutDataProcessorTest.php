@@ -494,9 +494,49 @@ class CheckoutDataProcessorTest extends TestCase
                 'getLastname',
                 'getTelephone',
                 'getEmail',
+                'getStreet',
+                'getStreetLine',
+                'getCity',
+                'getPostcode',
+                'getRegionId',
             ])
             ->addMethods(['setCollectShippingRates'])
             ->getMock();
+    }
+
+    /**
+     * A store bills where it ships unless the agent named a billing address of its own.
+     *
+     * @return void
+     */
+    public function testTheBillingAddressFallsBackToTheShippingOne(): void
+    {
+        $shipping = $this->createAddress();
+        $shipping->method('getStreet')->willReturn(['1 Main St']);
+        $shipping->method('getCity')->willReturn('Austin');
+        $shipping->method('getCountryId')->willReturn('US');
+        $shipping->method('getPostcode')->willReturn('78701');
+
+        $billing = $this->createAddress();
+        $billing->method('getStreetLine')->willReturn('');
+        $billing->expects($this->once())->method('setStreet')->with(['1 Main St']);
+        $billing->expects($this->once())->method('setCity')->with('Austin');
+        $billing->expects($this->once())->method('setCountryId')->with('US');
+        $billing->expects($this->once())->method('setPostcode')->with('78701');
+
+        $this->processor->fillBillingFromShipping($this->createQuote($shipping, $billing));
+    }
+
+    /**
+     * @return void
+     */
+    public function testABillingAddressTheAgentGaveIsLeftAlone(): void
+    {
+        $billing = $this->createAddress();
+        $billing->method('getStreetLine')->willReturn('9 Billing Road');
+        $billing->expects($this->never())->method('setStreet');
+
+        $this->processor->fillBillingFromShipping($this->createQuote(null, $billing));
     }
 
     /**
@@ -572,6 +612,7 @@ class CheckoutDataProcessorTest extends TestCase
                 'removeAllItems',
                 'addProduct',
                 'collectTotals',
+                'getIsVirtual',
             ])
             ->getMock();
 

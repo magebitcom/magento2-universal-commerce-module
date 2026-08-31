@@ -98,12 +98,9 @@ class QuoteToFulfillmentResponse
      */
     public function getMethods(Address $shippingAddress, array $quoteItemIds, ?array $submittedMethod = null): array
     {
+        // Reported even with nothing to offer yet: an agent that submitted a method with no destination
+        // has to see it come back, or it cannot tell whether the store understood the request.
         $shippingOptions = $this->shippingOptionResolver->resolve($shippingAddress->getQuote());
-
-        if ($shippingOptions === []) {
-            return [];
-        }
-
         $submittedGroup = $this->firstOf($submittedMethod, 'groups');
 
         /** @var FulfillmentMethodResponseInterface $method */
