@@ -29,6 +29,7 @@
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\RestHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\RestHandler" />
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\QuoteValidatorInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\Validation\QuoteValidationComposite" />
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\OrderHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\OrderHandler" />
+    <preference for="Magebit\UniversalCommerce\Api\OrderAdjustmentRepositoryInterface" type="Magebit\UniversalCommerce\Model\OrderAdjustment\Repository" />
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\CartHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\CartHandler" />
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\CatalogHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\CatalogHandler" />
 
@@ -163,6 +164,9 @@
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\MessageInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Message" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\MessageErrorInterface" type="Magebit\UcpSpec\Data\Shopping\Types\MessageError" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\OrderConfirmationInterface" type="Magebit\UcpSpec\Data\Shopping\Types\OrderConfirmation" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\OrderUpdateRequestInterface" type="Magebit\UcpSpec\Data\Shopping\OrderUpdateRequest" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\OrderUpdateRequestFulfillmentInterface" type="Magebit\UcpSpec\Data\Shopping\OrderUpdateRequestFulfillment" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\TotalUpdateRequestInterface" type="Magebit\UcpSpec\Data\Shopping\Types\TotalUpdateRequest" />
     <preference for="Magebit\UcpSpec\Api\PaymentHandlerResponseSchemaInterface" type="Magebit\UcpSpec\Data\PaymentHandlerResponseSchema" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface" type="Magebit\UcpSpec\Data\Shopping\Types\TotalResponse" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\FulfillmentRequestInterface" type="Magebit\UcpSpec\Data\Shopping\Types\FulfillmentRequest" />

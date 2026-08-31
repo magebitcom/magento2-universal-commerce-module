@@ -20,6 +20,8 @@ use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
 use Magebit\UcpSpec\Data\Shopping\Types\Adjustment;
 use Magebit\UcpSpec\Data\Shopping\Types\AdjustmentLineItemsItem;
 use Magebit\UcpSpec\Data\Shopping\Types\TotalResponse;
+use Magebit\UniversalCommerce\Api\Data\OrderAdjustmentInterface;
+use Magebit\UniversalCommerce\Api\OrderAdjustmentRepositoryInterface;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\OrderToAdjustments;
 use Magebit\UniversalCommerce\Model\Timestamp;
 use Magento\Framework\Api\SearchCriteria;
@@ -36,12 +38,15 @@ class OrderToAdjustmentsTest extends TestCase
 
     /**
      * @param Creditmemo[] $creditmemos
+     * @param array<int, array<string, mixed>> $stored Adjustments an agent submitted earlier
      * @return OrderToAdjustments
      */
-    private function converterFor(array $creditmemos): OrderToAdjustments
+    private function converterFor(array $creditmemos, array $stored = []): OrderToAdjustments
     {
         $adjustmentFactory = $this->createMock(AdjustmentInterfaceFactory::class);
-        $adjustmentFactory->method('create')->willReturnCallback(fn (): Adjustment => new Adjustment());
+        $adjustmentFactory->method('create')->willReturnCallback(
+            static fn (array $arguments = []): Adjustment => new Adjustment($arguments['data'] ?? [])
+        );
 
         $lineItemFactory = $this->createMock(AdjustmentLineItemsItemInterfaceFactory::class);
         $lineItemFactory->method('create')
@@ -60,6 +65,18 @@ class OrderToAdjustmentsTest extends TestCase
         $builder->method('addFilter')->willReturnSelf();
         $builder->method('create')->willReturn($this->createMock(SearchCriteria::class));
 
+        $rows = [];
+
+        foreach ($stored as $payload) {
+            $row = $this->createMock(OrderAdjustmentInterface::class);
+            $row->method('getAdjustmentId')->willReturn((string) ($payload['id'] ?? ''));
+            $row->method('getPayload')->willReturn((string) json_encode($payload));
+            $rows[] = $row;
+        }
+
+        $orderAdjustments = $this->createMock(OrderAdjustmentRepositoryInterface::class);
+        $orderAdjustments->method('getByOrderId')->willReturn($rows);
+
         return new OrderToAdjustments(
             $adjustmentFactory,
             $lineItemFactory,
@@ -67,7 +84,8 @@ class OrderToAdjustmentsTest extends TestCase
             new MinorUnits(),
             new Timestamp(),
             $repository,
-            $builder
+            $builder,
+            $orderAdjustments
         );
     }
 
@@ -162,13 +180,56 @@ class OrderToAdjustmentsTest extends TestCase
     }
 
     /**
+     * @return void
+     */
+    public function testAnAdjustmentAnAgentSubmittedIsReportedBackUnchanged(): void
+    {
+        $adjustments = $this->convert(stored: [[
+            'id' => 'adj_1',
+            'type' => 'refund',
+            'occurred_at' => '2026-08-31T12:00:00Z',
+            'status' => 'pending',
+            'description' => 'Customer refund request',
+        ]]);
+
+        $this->assertCount(1, $adjustments);
+        $this->assertSame('adj_1', $adjustments[0]->getId());
+        $this->assertSame('pending', $adjustments[0]->getStatus());
+        $this->assertSame('Customer refund request', $adjustments[0]->getDescription());
+    }
+
+    /**
+     * A request for a refund is not the refund, so when both name the same identifier the store's own
+     * record is the one reported.
+     *
+     * @return void
+     */
+    public function testTheStoresOwnRecordOutranksAMatchingSubmission(): void
+    {
+        $adjustments = $this->convert(
+            creditmemos: [$this->creditmemo('CM-1', 25.00, [11 => 1.0])],
+            stored: [[
+                'id' => 'CM-1',
+                'type' => 'refund',
+                'occurred_at' => '2026-08-31T12:00:00Z',
+                'status' => 'pending',
+            ]]
+        );
+
+        $this->assertCount(1, $adjustments);
+        $this->assertSame('completed', $adjustments[0]->getStatus());
+    }
+
+    /**
      * @param Creditmemo[] $creditmemos
      * @param bool $isCanceled
+     * @param array<int, array<string, mixed>> $stored
      * @return AdjustmentInterface[]
      */
-    private function convert(array $creditmemos = [], bool $isCanceled = false): array
+    private function convert(array $creditmemos = [], bool $isCanceled = false, array $stored = []): array
     {
-        return $this->converterFor($creditmemos)->convert($this->order($isCanceled), self::LINE_ITEM_IDS);
+        return $this->converterFor($creditmemos, $stored)
+            ->convert($this->order($isCanceled), self::LINE_ITEM_IDS);
     }
 
     /**

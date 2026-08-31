@@ -108,6 +108,12 @@
                     <item name="controller" xsi:type="string">service</item>
                     <item name="action" xsi:type="string">shopping_getorder</item>
                 </item>
+                <item name="shopping.update.order" xsi:type="array">
+                    <item name="path" xsi:type="string">ucp/shopping/orders/{order_id}</item>
+                    <item name="method" xsi:type="string">PUT</item>
+                    <item name="controller" xsi:type="string">service</item>
+                    <item name="action" xsi:type="string">shopping_updateorder</item>
+                </item>
                 <!-- Not part of UCP: the conformance suite hardcodes this path to trigger an order event. -->
                 <item name="testing.simulate.shipping" xsi:type="array">
                     <item name="path" xsi:type="string">testing/simulate-shipping/{order_id}</item>

@@ -13,11 +13,14 @@ namespace Magebit\UniversalCommerce\Model\Service\Shopping;
 
 use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
 use Magebit\UcpSpec\Api\Shopping\OrderResponseInterface;
+use Magebit\UcpSpec\Api\Shopping\OrderUpdateRequestInterface;
 use Magebit\UniversalCommerce\Api\Service\Shopping\OrderHandlerInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Order\AdjustmentRecorder;
 use Magebit\UniversalCommerce\Model\Order\IncrementIdLookup;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\OrderToOrderResponse;
+use Magento\Sales\Model\Order;
 
 class OrderHandler implements OrderHandlerInterface
 {
@@ -25,11 +28,13 @@ class OrderHandler implements OrderHandlerInterface
      * @param IncrementIdLookup $orderLookup
      * @param OrderLinkRepositoryInterface $orderLinkRepository
      * @param OrderToOrderResponse $orderConverter
+     * @param AdjustmentRecorder $adjustmentRecorder
      */
     public function __construct(
         private readonly IncrementIdLookup $orderLookup,
         private readonly OrderLinkRepositoryInterface $orderLinkRepository,
-        private readonly OrderToOrderResponse $orderConverter
+        private readonly OrderToOrderResponse $orderConverter,
+        private readonly AdjustmentRecorder $adjustmentRecorder
     ) {
     }
 
@@ -37,6 +42,33 @@ class OrderHandler implements OrderHandlerInterface
      * @inheritDoc
      */
     public function getOrder(string $orderId): OrderResponseInterface
+    {
+        [$order, $checkoutId] = $this->resolve($orderId);
+
+        return $this->orderConverter->convert($order, $checkoutId);
+    }
+
+    /**
+     * Only the adjustments are taken from the request. Everything else it carries — line items, totals,
+     * the permalink — describes the order, which is the store's to state and not the agent's to change.
+     *
+     * @inheritDoc
+     */
+    public function updateOrder(string $orderId, OrderUpdateRequestInterface $request): OrderResponseInterface
+    {
+        [$order, $checkoutId] = $this->resolve($orderId);
+
+        $this->adjustmentRecorder->record($order, $request->getAdjustments() ?? []);
+
+        return $this->orderConverter->convert($order, $checkoutId);
+    }
+
+    /**
+     * @param string $orderId
+     * @return array{Order, string} The order and the session it was placed from
+     * @throws UcpException When no order of that identifier came from this protocol
+     */
+    private function resolve(string $orderId): array
     {
         $order = $this->orderLookup->find($orderId);
         $entityId = $order?->getEntityId();
@@ -55,6 +87,6 @@ class OrderHandler implements OrderHandlerInterface
             );
         }
 
-        return $this->orderConverter->convert($order, $checkoutId);
+        return [$order, $checkoutId];
     }
 }

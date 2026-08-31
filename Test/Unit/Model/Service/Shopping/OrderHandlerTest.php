@@ -14,10 +14,13 @@ namespace Magebit\UniversalCommerce\Test\Unit\Model\Service\Shopping;
 
 use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
 use Magebit\UcpSpec\Api\Shopping\OrderResponseInterface;
+use Magebit\UcpSpec\Api\Shopping\OrderUpdateRequestInterface;
+use Magebit\UcpSpec\Api\Shopping\Types\AdjustmentInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
 use Magebit\UniversalCommerce\Model\Order\IncrementIdLookup;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\OrderToOrderResponse;
+use Magebit\UniversalCommerce\Model\Order\AdjustmentRecorder;
 use Magebit\UniversalCommerce\Model\Service\Shopping\OrderHandler;
 use Magento\Sales\Model\Order;
 use PHPUnit\Framework\TestCase;
@@ -84,15 +87,49 @@ class OrderHandlerTest extends TestCase
     }
 
     /**
+     * @return void
+     */
+    public function testAnUpdateRecordsTheAdjustmentsItCarries(): void
+    {
+        $adjustment = $this->createMock(AdjustmentInterface::class);
+        $recorder = $this->createMock(AdjustmentRecorder::class);
+        $recorder->expects($this->once())
+            ->method('record')
+            ->with($this->isInstanceOf(Order::class), [$adjustment]);
+
+        $request = $this->createMock(OrderUpdateRequestInterface::class);
+        $request->method('getAdjustments')->willReturn([$adjustment]);
+
+        $this->handler(self::CHECKOUT_ID, recorder: $recorder)
+            ->updateOrder(self::ORDER_ID, $request);
+    }
+
+    /**
+     * @return void
+     */
+    public function testAnUpdateToAnOrderFromAnotherProtocolIsRefused(): void
+    {
+        $recorder = $this->createMock(AdjustmentRecorder::class);
+        $recorder->expects($this->never())->method('record');
+
+        $this->expectException(UcpException::class);
+
+        $this->handler(null, recorder: $recorder)
+            ->updateOrder(self::ORDER_ID, $this->createMock(OrderUpdateRequestInterface::class));
+    }
+
+    /**
      * @param string|null $linkedCheckoutId Session the order came from, or null when it came from none
      * @param bool $found Whether an order of that increment id exists
      * @param OrderToOrderResponse|null $converter
+     * @param AdjustmentRecorder|null $recorder
      * @return OrderHandler
      */
     private function handler(
         ?string $linkedCheckoutId,
         bool $found = true,
-        ?OrderToOrderResponse $converter = null
+        ?OrderToOrderResponse $converter = null,
+        ?AdjustmentRecorder $recorder = null
     ): OrderHandler {
         $order = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
@@ -113,6 +150,11 @@ class OrderHandlerTest extends TestCase
             $converter->method('convert')->willReturn($this->createMock(OrderResponseInterface::class));
         }
 
-        return new OrderHandler($lookup, $links, $converter);
+        return new OrderHandler(
+            $lookup,
+            $links,
+            $converter,
+            $recorder ?? $this->createMock(AdjustmentRecorder::class)
+        );
     }
 }

@@ -143,7 +143,20 @@ class RequestValidator
                     $typeName,
                     gettype($value)
                 );
+
+                return $errors;
             }
+
+            $allowed = is_string($value) ? $this->allowedValues($method) : [];
+
+            if ($allowed !== [] && !in_array($value, $allowed, true)) {
+                $errors[$pathPrefix] = sprintf(
+                    'Field "%s" must be one of: %s',
+                    basename($pathPrefix),
+                    implode(', ', $allowed)
+                );
+            }
+
             return $errors;
         }
 
@@ -257,6 +270,27 @@ class RequestValidator
         }
 
         return null;
+    }
+
+    /**
+     * The generated interfaces carry one constant per allowed value, named after the field, and only
+     * where the specification actually limits it. A field with no such constants is free-form.
+     *
+     * @param ReflectionMethod $method
+     * @return string[]
+     */
+    private function allowedValues(ReflectionMethod $method): array
+    {
+        $prefix = strtoupper($this->methodToKey($method->getName())) . '_';
+        $allowed = [];
+
+        foreach ($method->getDeclaringClass()->getConstants() as $name => $constant) {
+            if (str_starts_with($name, $prefix) && is_string($constant)) {
+                $allowed[] = $constant;
+            }
+        }
+
+        return $allowed;
     }
 
     /**

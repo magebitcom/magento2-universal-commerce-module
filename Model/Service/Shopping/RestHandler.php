@@ -36,7 +36,7 @@ use Magebit\UniversalCommerce\Api\Data\CheckoutMetaInterfaceFactory;
 use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
-use Magebit\AgenticCore\Model\Order\PlacementNote;
+use Magebit\AgenticCore\Model\Order\Note;
 use Magebit\UniversalCommerce\Model\Webhook\OrderEventNotifier;
 use Magento\Quote\Model\Quote;
 use Magento\Sales\Api\OrderRepositoryInterface;
@@ -56,7 +56,7 @@ class RestHandler implements RestHandlerInterface
      * @param OrderLinkRepositoryInterface $orderLinkRepository
      * @param OrderRepositoryInterface $orderRepository
      * @param OrderEventNotifier $orderEventNotifier
-     * @param PlacementNote $placementNote
+     * @param Note $orderNote
      * @param CheckoutGuard $checkoutGuard
      * @param QuoteValidatorInterface $quoteValidator
      * @param MessageInterfaceFactory $messageFactory
@@ -73,7 +73,7 @@ class RestHandler implements RestHandlerInterface
         protected readonly OrderLinkRepositoryInterface $orderLinkRepository,
         protected readonly OrderRepositoryInterface $orderRepository,
         protected readonly OrderEventNotifier $orderEventNotifier,
-        protected readonly PlacementNote $placementNote,
+        protected readonly Note $orderNote,
         protected readonly CheckoutGuard $checkoutGuard,
         protected readonly QuoteValidatorInterface $quoteValidator,
         protected readonly MessageInterfaceFactory $messageFactory
@@ -199,7 +199,7 @@ class RestHandler implements RestHandlerInterface
         $placedOrder = $this->orderRepository->get($orderId);
 
         if ($placedOrder instanceof Order) {
-            $this->placementNote->add($placedOrder, (string) __('Placed by an agent over UCP.'));
+            $this->orderNote->add($placedOrder, (string) __('Placed by an agent over UCP.'));
             $this->orderEventNotifier->notify($placedOrder);
         }
 

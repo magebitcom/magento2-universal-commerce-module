@@ -182,7 +182,9 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
             );
         }
 
-        return $this->makeErrorResponse($messages, 400);
+        // 422 rather than 400: the body parsed, so the request is well formed and the objection is to
+        // what it says.
+        return $this->makeErrorResponse($messages, 422);
     }
 
     /**

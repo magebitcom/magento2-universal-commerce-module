@@ -20,6 +20,7 @@ use Magebit\UcpSpec\Api\Shopping\Types\AdjustmentLineItemsItemInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
 use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
+use Magebit\UniversalCommerce\Api\OrderAdjustmentRepositoryInterface;
 use Magebit\UniversalCommerce\Model\Timestamp;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Sales\Api\CreditmemoRepositoryInterface;
@@ -48,6 +49,7 @@ class OrderToAdjustments
      * @param Timestamp $timestamp
      * @param CreditmemoRepositoryInterface $creditmemoRepository
      * @param SearchCriteriaBuilder $searchCriteriaBuilder
+     * @param OrderAdjustmentRepositoryInterface $orderAdjustmentRepository
      */
     public function __construct(
         private readonly AdjustmentInterfaceFactory $adjustmentFactory,
@@ -56,7 +58,8 @@ class OrderToAdjustments
         private readonly MinorUnits $minorUnits,
         private readonly Timestamp $timestamp,
         private readonly CreditmemoRepositoryInterface $creditmemoRepository,
-        private readonly SearchCriteriaBuilder $searchCriteriaBuilder
+        private readonly SearchCriteriaBuilder $searchCriteriaBuilder,
+        private readonly OrderAdjustmentRepositoryInterface $orderAdjustmentRepository
     ) {
     }
 
@@ -74,7 +77,82 @@ class OrderToAdjustments
             $adjustments[] = $cancellation;
         }
 
+        return array_merge($adjustments, $this->submitted($order, $this->idsOf($adjustments)));
+    }
+
+    /**
+     * Adjustments an agent asked this store to record. What the store did itself takes precedence: an
+     * agent's request for a refund is not the refund, so a matching identifier reports the real one.
+     *
+     * @param Order $order
+     * @param string[] $recordedIds Identifiers the store's own records already account for
+     * @return AdjustmentInterface[]
+     */
+    public function submitted(Order $order, array $recordedIds = []): array
+    {
+        $entityId = $order->getEntityId();
+
+        if (!is_numeric($entityId)) {
+            return [];
+        }
+
+        $adjustments = [];
+
+        foreach ($this->orderAdjustmentRepository->getByOrderId((int) $entityId) as $stored) {
+            $decoded = json_decode((string) $stored->getPayload(), true);
+
+            if (!is_array($decoded) || in_array((string) $stored->getAdjustmentId(), $recordedIds, true)) {
+                continue;
+            }
+
+            /** @var AdjustmentInterface $adjustment */
+            $adjustment = $this->adjustmentFactory->create(['data' => $decoded]);
+            $adjustments[] = $adjustment;
+        }
+
         return $adjustments;
+    }
+
+    /**
+     * @param AdjustmentInterface[] $adjustments
+     * @return string[]
+     */
+    public function idsOf(array $adjustments): array
+    {
+        return array_map(
+            static fn (AdjustmentInterface $adjustment): string => $adjustment->getId(),
+            $adjustments
+        );
+    }
+
+    /**
+     * Everything already accounted for against this order, whether the store recorded it itself or an
+     * agent submitted it earlier. Used to decide whether a submission is new.
+     *
+     * @param Order $order
+     * @return string[]
+     */
+    public function knownIds(Order $order): array
+    {
+        $entityId = $order->getEntityId();
+        $derived = $this->convertRefunds($order, []);
+        $cancellation = $this->convertCancellation($order);
+
+        if ($cancellation !== null) {
+            $derived[] = $cancellation;
+        }
+
+        $ids = $this->idsOf($derived);
+
+        if (!is_numeric($entityId)) {
+            return $ids;
+        }
+
+        foreach ($this->orderAdjustmentRepository->getByOrderId((int) $entityId) as $stored) {
+            $ids[] = (string) $stored->getAdjustmentId();
+        }
+
+        return $ids;
     }
 
     /**
