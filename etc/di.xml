@@ -15,6 +15,16 @@
         </arguments>
     </type>
 
+    <!-- How an order placed through this protocol reads in admin. The base holds the badge; the label
+         is ours, because the base may not name a protocol. -->
+    <type name="Magebit\AgenticCore\Block\Adminhtml\Order\View\PlacedBy">
+        <arguments>
+            <argument name="labels" xsi:type="array">
+                <item name="ucp" xsi:type="string">Placed by an agent over UCP</item>
+            </argument>
+        </arguments>
+    </type>
+
     <!-- Shopping service -->
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\RestHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\RestHandler" />
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\QuoteValidatorInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\Validation\QuoteValidationComposite" />
