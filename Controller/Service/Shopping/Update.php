@@ -24,6 +24,7 @@ use Magebit\UniversalCommerce\Model\Validation\ValidationResult;
 use Magebit\UniversalCommerce\Model\RequestClassBuilder;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Protocol\UndeclaredExtensions;
 use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
 use Psr\Log\LoggerInterface;
 use JsonSerializable;
@@ -41,6 +42,7 @@ class Update extends ApiController
         IdempotencyHandler $idempotencyHandler,
         LoggerInterface $logger,
         VersionNegotiator $versionNegotiator,
+        private readonly UndeclaredExtensions $undeclaredExtensions,
         protected readonly CheckoutUpdateRequestInterfaceFactory $checkoutUpdateRequestFactory,
         protected readonly RestHandlerInterface $restHandler
     ) {
@@ -86,6 +88,8 @@ class Update extends ApiController
             $checkoutResponse = $this->restHandler->updateCheckout($checkoutId, $checkoutUpdateRequest);
 
             if ($checkoutResponse instanceof JsonSerializable) {
+                $this->undeclaredExtensions->annotate($checkoutResponse, $this->decodedBody());
+
                 $this->idempotencyHandler->storeResponse($this->getHttpRequest(), $checkoutResponse, 200);
 
                 return $this->makeJsonResponse($checkoutResponse);

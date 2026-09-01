@@ -61,6 +61,16 @@
             </argument>
         </arguments>
     </type>
+    <!-- Extensions the specification defines for this service but the store does not implement. A
+         request that carries one is answered with a warning rather than having it dropped in silence. -->
+    <type name="Magebit\UniversalCommerce\Model\Protocol\UndeclaredExtensions">
+        <arguments>
+            <argument name="extensions" xsi:type="array">
+                <item name="ap2" xsi:type="string">dev.ucp.shopping.ap2_mandate</item>
+            </argument>
+        </arguments>
+    </type>
+
     <type name="Magebit\UniversalCommerce\Model\Service\Shopping\Validation\QuoteValidationComposite">
         <arguments>
             <argument name="validators" xsi:type="array">
