@@ -374,7 +374,9 @@ class QuoteToCheckoutResponse
 
         /** @var OrderConfirmationInterface $confirmation */
         $confirmation = $this->orderConfirmationFactory->create();
-        $confirmation->setId((string) $order->getIncrementId());
+        // Same identifier the order endpoint answers to, so the agent can come back for the order.
+        $confirmation->setId($checkoutId);
+        $confirmation->setLabel((string) $order->getIncrementId());
         $confirmation->setPermalinkUrl(
             $this->config->getApiBaseUrl((int) $order->getStoreId())
             . '/sales/order/view/order_id/' . $orderId

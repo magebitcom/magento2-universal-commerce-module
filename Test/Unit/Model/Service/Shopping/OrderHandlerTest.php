@@ -12,7 +12,6 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Test\Unit\Model\Service\Shopping;
 
-use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
 use Magebit\UcpSpec\Api\Shopping\OrderResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\OrderResponseFulfillmentInterface;
 use Magebit\UcpSpec\Api\Shopping\OrderUpdateRequestFulfillmentInterface;
@@ -22,17 +21,16 @@ use Magebit\UcpSpec\Data\Shopping\Types\Message;
 use Magebit\UcpSpec\Api\Shopping\OrderUpdateRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\AdjustmentInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
-use Magebit\UniversalCommerce\Model\IdempotencyHandler;
-use Magebit\UniversalCommerce\Model\Order\IncrementIdLookup;
-use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\OrderToOrderResponse;
 use Magebit\UniversalCommerce\Model\Order\AdjustmentRecorder;
+use Magebit\UniversalCommerce\Model\Order\SessionOrderLookup;
+use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\OrderToOrderResponse;
 use Magebit\UniversalCommerce\Model\Service\Shopping\OrderHandler;
 use Magento\Sales\Model\Order;
 use PHPUnit\Framework\TestCase;
 
 class OrderHandlerTest extends TestCase
 {
-    private const ORDER_ID = '000000123';
+    private const INCREMENT_ID = '000000123';
     private const ENTITY_ID = 42;
     private const CHECKOUT_ID = 'checkout_session_placeholder_0001';
 
@@ -41,32 +39,21 @@ class OrderHandlerTest extends TestCase
      */
     public function testAnOrderFromThisProtocolIsServed(): void
     {
-        $response = $this->handler(self::CHECKOUT_ID)->getOrder(self::ORDER_ID);
+        $response = $this->handler(true)->getOrder(self::CHECKOUT_ID);
 
         $this->assertInstanceOf(OrderResponseInterface::class, $response);
     }
 
     /**
-     * The spec has the business verify the caller's own checkout produced the order. Until callers are
-     * authenticated the link is what can be checked, so an order with no link is not this protocol's to
-     * hand out — the storefront's orders included.
+     * The store's order number runs in sequence, so anyone could count up to someone else's order. It
+     * addresses nothing here, and a caller holding one is told the same as a caller holding nothing.
      *
      * @return void
      */
-    public function testAnOrderPlacedOutsideThisProtocolIsNotDisclosed(): void
-    {
-        $this->expectException(UcpException::class);
-
-        $this->handler(null)->getOrder(self::ORDER_ID);
-    }
-
-    /**
-     * @return void
-     */
-    public function testAnUnknownOrderIsReportedAsNotFound(): void
+    public function testAnOrderNumberDoesNotReachAnOrder(): void
     {
         try {
-            $this->handler(self::CHECKOUT_ID, found: false)->getOrder(self::ORDER_ID);
+            $this->handler(true)->getOrder(self::INCREMENT_ID);
         } catch (UcpException $exception) {
             $this->assertSame(404, $exception->getStatusCode());
             $this->assertSame('not_found', $exception->getErrorCode());
@@ -74,7 +61,27 @@ class OrderHandlerTest extends TestCase
             return;
         }
 
-        $this->fail('the missing order was served');
+        $this->fail('an order number reached an order');
+    }
+
+    /**
+     * Orders placed through the storefront, or through the other protocol, have no session of this
+     * protocol behind them, so this protocol does not hand them out.
+     *
+     * @return void
+     */
+    public function testAnOrderPlacedOutsideThisProtocolIsNotDisclosed(): void
+    {
+        try {
+            $this->handler(false)->getOrder(self::CHECKOUT_ID);
+        } catch (UcpException $exception) {
+            $this->assertSame(404, $exception->getStatusCode());
+            $this->assertSame('not_found', $exception->getErrorCode());
+
+            return;
+        }
+
+        $this->fail('an unlinked order was served');
     }
 
     /**
@@ -88,7 +95,7 @@ class OrderHandlerTest extends TestCase
             ->with($this->isInstanceOf(Order::class), self::CHECKOUT_ID)
             ->willReturn($this->createMock(OrderResponseInterface::class));
 
-        $this->handler(self::CHECKOUT_ID, converter: $converter)->getOrder(self::ORDER_ID);
+        $this->handler(true, converter: $converter)->getOrder(self::CHECKOUT_ID);
     }
 
     /**
@@ -140,7 +147,7 @@ class OrderHandlerTest extends TestCase
         $request = $this->createMock(OrderUpdateRequestInterface::class);
         $request->method('getFulfillment')->willReturn($requestFulfillment);
 
-        $this->handler(self::CHECKOUT_ID, converter: $converter)->updateOrder(self::ORDER_ID, $request);
+        $this->handler(true, converter: $converter)->updateOrder(self::CHECKOUT_ID, $request);
     }
 
     /**
@@ -184,8 +191,8 @@ class OrderHandlerTest extends TestCase
         $request = $this->createMock(OrderUpdateRequestInterface::class);
         $request->method('getAdjustments')->willReturn([$adjustment]);
 
-        $this->handler(self::CHECKOUT_ID, recorder: $recorder)
-            ->updateOrder(self::ORDER_ID, $request);
+        $this->handler(true, recorder: $recorder)
+            ->updateOrder(self::CHECKOUT_ID, $request);
     }
 
     /**
@@ -198,20 +205,18 @@ class OrderHandlerTest extends TestCase
 
         $this->expectException(UcpException::class);
 
-        $this->handler(null, recorder: $recorder)
-            ->updateOrder(self::ORDER_ID, $this->createMock(OrderUpdateRequestInterface::class));
+        $this->handler(false, recorder: $recorder)
+            ->updateOrder(self::CHECKOUT_ID, $this->createMock(OrderUpdateRequestInterface::class));
     }
 
     /**
-     * @param string|null $linkedCheckoutId Session the order came from, or null when it came from none
-     * @param bool $found Whether an order of that increment id exists
+     * @param bool $linked Whether the checkout session placed an order this protocol may hand out
      * @param OrderToOrderResponse|null $converter
      * @param AdjustmentRecorder|null $recorder
      * @return OrderHandler
      */
     private function handler(
-        ?string $linkedCheckoutId,
-        bool $found = true,
+        bool $linked,
         ?OrderToOrderResponse $converter = null,
         ?AdjustmentRecorder $recorder = null
     ): OrderHandler {
@@ -221,13 +226,12 @@ class OrderHandlerTest extends TestCase
             ->getMock();
         $order->method('getEntityId')->willReturn(self::ENTITY_ID);
 
-        $lookup = $this->createMock(IncrementIdLookup::class);
-        $lookup->method('find')->willReturn($found ? $order : null);
-
-        $links = $this->createMock(OrderLinkRepositoryInterface::class);
-        $links->method('findSessionId')
-            ->with(IdempotencyHandler::SCOPE, self::ENTITY_ID)
-            ->willReturn($linkedCheckoutId);
+        $lookup = $this->createMock(SessionOrderLookup::class);
+        // Only the session that placed the order finds it; every other identifier finds nothing.
+        $lookup->method('find')->willReturnCallback(
+            static fn (string $identifier): ?Order =>
+                $linked && $identifier === self::CHECKOUT_ID ? $order : null
+        );
 
         if ($converter === null) {
             $converter = $this->createMock(OrderToOrderResponse::class);
@@ -241,7 +245,6 @@ class OrderHandlerTest extends TestCase
 
         return new OrderHandler(
             $lookup,
-            $links,
             $converter,
             $recorder ?? $this->createMock(AdjustmentRecorder::class),
             $messageFactory

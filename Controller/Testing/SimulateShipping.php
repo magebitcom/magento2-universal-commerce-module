@@ -12,9 +12,7 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Controller\Testing;
 
-use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
-use Magebit\UniversalCommerce\Model\IdempotencyHandler;
-use Magebit\UniversalCommerce\Model\Order\IncrementIdLookup;
+use Magebit\UniversalCommerce\Model\Order\SessionOrderLookup;
 use Magebit\UniversalCommerce\Model\Simulation\Secret;
 use Magento\Framework\App\ActionInterface;
 use Magento\Framework\App\CsrfAwareActionInterface;
@@ -44,8 +42,7 @@ class SimulateShipping implements ActionInterface, CsrfAwareActionInterface
      * @param JsonFactory $resultJsonFactory
      * @param Http $request
      * @param Secret $secret
-     * @param IncrementIdLookup $orderLookup
-     * @param OrderLinkRepositoryInterface $orderLinkRepository
+     * @param SessionOrderLookup $orderLookup
      * @param ShipOrderInterface $shipOrder
      * @param LoggerInterface $logger
      */
@@ -53,8 +50,7 @@ class SimulateShipping implements ActionInterface, CsrfAwareActionInterface
         private readonly JsonFactory $resultJsonFactory,
         private readonly Http $request,
         private readonly Secret $secret,
-        private readonly IncrementIdLookup $orderLookup,
-        private readonly OrderLinkRepositoryInterface $orderLinkRepository,
+        private readonly SessionOrderLookup $orderLookup,
         private readonly ShipOrderInterface $shipOrder,
         private readonly LoggerInterface $logger
     ) {
@@ -77,14 +73,15 @@ class SimulateShipping implements ActionInterface, CsrfAwareActionInterface
             return $this->error(403, 'A valid simulation secret is required.');
         }
 
-        /** @var string|null $orderId */
-        $orderId = $this->request->getParam('order_id');
-        $order = $this->orderLookup->find((string) $orderId);
+        // The same identifier the protocol hands out: the checkout session that placed the order.
+        /** @var string|null $checkoutId */
+        $checkoutId = $this->request->getParam('order_id');
+        $order = $this->orderLookup->find((string) $checkoutId);
         $entityId = $order?->getEntityId();
 
         // An order the protocol did not place is none of this endpoint's business, so it reads as
         // missing rather than refused.
-        if ($order === null || !is_numeric($entityId) || !$this->wasPlacedByAgent((int) $entityId)) {
+        if ($order === null || !is_numeric($entityId)) {
             return $this->error(404, 'Order not found.');
         }
 
@@ -101,18 +98,10 @@ class SimulateShipping implements ActionInterface, CsrfAwareActionInterface
         }
 
         return $this->json(200, [
-            'order_id' => $order->getIncrementId(),
+            'order_id' => (string) $checkoutId,
+            'label' => $order->getIncrementId(),
             'shipment_id' => $shipmentId,
         ]);
-    }
-
-    /**
-     * @param int $entityId
-     * @return bool
-     */
-    private function wasPlacedByAgent(int $entityId): bool
-    {
-        return $this->orderLinkRepository->findSessionId(IdempotencyHandler::SCOPE, $entityId) !== null;
     }
 
     /**

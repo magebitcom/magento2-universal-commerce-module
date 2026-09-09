@@ -12,10 +12,8 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Test\Unit\Controller\Testing;
 
-use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
 use Magebit\UniversalCommerce\Controller\Testing\SimulateShipping;
-use Magebit\UniversalCommerce\Model\IdempotencyHandler;
-use Magebit\UniversalCommerce\Model\Order\IncrementIdLookup;
+use Magebit\UniversalCommerce\Model\Order\SessionOrderLookup;
 use Magebit\UniversalCommerce\Model\Simulation\Secret;
 use Magento\Framework\App\Request\Http;
 use Magento\Framework\Controller\Result\Json as ResultJson;
@@ -29,7 +27,8 @@ use Psr\Log\LoggerInterface;
 class SimulateShippingTest extends TestCase
 {
     private const SECRET = 'super-secret-sim-key';
-    private const ORDER_ID = '000000123';
+    private const CHECKOUT_ID = 'checkout_session_placeholder_0001';
+    private const INCREMENT_ID = '000000123';
     private const ENTITY_ID = 42;
     private const SHIPMENT_ID = 7;
 
@@ -77,7 +76,7 @@ class SimulateShippingTest extends TestCase
     /**
      * @return void
      */
-    public function testAnUnknownOrderIsNotFound(): void
+    public function testAnUnknownIdentifierIsNotFound(): void
     {
         $result = $this->controller(found: false)->execute();
 
@@ -86,7 +85,8 @@ class SimulateShippingTest extends TestCase
 
     /**
      * Even with the right secret, this endpoint has no business shipping an order the protocol did not
-     * place — the storefront's orders included.
+     * place — the storefront's orders included. Only the checkout session reaches an order, and those
+     * orders have none.
      *
      * @return void
      */
@@ -95,7 +95,7 @@ class SimulateShippingTest extends TestCase
         $shipOrder = $this->createMock(ShipOrderInterface::class);
         $shipOrder->expects($this->never())->method('execute');
 
-        $result = $this->controller(linkedCheckoutId: null, shipOrder: $shipOrder)->execute();
+        $result = $this->controller(found: false, shipOrder: $shipOrder)->execute();
 
         $this->assertSame(404, $result->getHttpResponseCode());
     }
@@ -125,7 +125,11 @@ class SimulateShippingTest extends TestCase
 
         $this->assertSame(200, $result->getHttpResponseCode());
         $this->assertSame(
-            ['order_id' => self::ORDER_ID, 'shipment_id' => self::SHIPMENT_ID],
+            [
+                'order_id' => self::CHECKOUT_ID,
+                'label' => self::INCREMENT_ID,
+                'shipment_id' => self::SHIPMENT_ID,
+            ],
             $result->getData()
         );
     }
@@ -147,7 +151,6 @@ class SimulateShippingTest extends TestCase
      * @param string|null $configured Secret env.php holds
      * @param string|null $sent Secret the caller sent
      * @param bool $found Whether an order of that increment id exists
-     * @param string|null $linkedCheckoutId Session the order came from, or null when it came from none
      * @param bool $canShip Whether the order is in a shippable state
      * @param ShipOrderInterface|null $shipOrder
      * @return SimulateShipping
@@ -156,7 +159,6 @@ class SimulateShippingTest extends TestCase
         ?string $configured = self::SECRET,
         ?string $sent = self::SECRET,
         bool $found = true,
-        ?string $linkedCheckoutId = 'checkout_session_placeholder_0001',
         bool $canShip = true,
         ?ShipOrderInterface $shipOrder = null
     ): SimulateShipping {
@@ -165,7 +167,7 @@ class SimulateShippingTest extends TestCase
 
         $request = $this->createMock(Http::class);
         $request->method('getHeader')->with(SimulateShipping::HEADER_SECRET)->willReturn($sent ?? false);
-        $request->method('getParam')->with('order_id')->willReturn(self::ORDER_ID);
+        $request->method('getParam')->with('order_id')->willReturn(self::CHECKOUT_ID);
 
         $order = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
@@ -173,15 +175,10 @@ class SimulateShippingTest extends TestCase
             ->getMock();
         $order->method('getEntityId')->willReturn(self::ENTITY_ID);
         $order->method('canShip')->willReturn($canShip);
-        $order->method('getIncrementId')->willReturn(self::ORDER_ID);
+        $order->method('getIncrementId')->willReturn(self::INCREMENT_ID);
 
-        $lookup = $this->createMock(IncrementIdLookup::class);
+        $lookup = $this->createMock(SessionOrderLookup::class);
         $lookup->method('find')->willReturn($found ? $order : null);
-
-        $links = $this->createMock(OrderLinkRepositoryInterface::class);
-        $links->method('findSessionId')
-            ->with(IdempotencyHandler::SCOPE, self::ENTITY_ID)
-            ->willReturn($linkedCheckoutId);
 
         $jsonFactory = $this->createMock(JsonFactory::class);
         $jsonFactory->method('create')->willReturnCallback(fn (): ResultJson => $this->resultJson());
@@ -191,7 +188,6 @@ class SimulateShippingTest extends TestCase
             $request,
             new Secret($deploymentConfig),
             $lookup,
-            $links,
             $shipOrder ?? $this->createMock(ShipOrderInterface::class),
             $this->createMock(LoggerInterface::class)
         );

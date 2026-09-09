@@ -11,16 +11,14 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Service\Shopping;
 
-use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
 use Magebit\UcpSpec\Api\Shopping\OrderResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\OrderUpdateRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
 use Magebit\UniversalCommerce\Api\Service\Shopping\OrderHandlerInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
-use Magebit\UniversalCommerce\Model\IdempotencyHandler;
 use Magebit\UniversalCommerce\Model\Order\AdjustmentRecorder;
-use Magebit\UniversalCommerce\Model\Order\IncrementIdLookup;
+use Magebit\UniversalCommerce\Model\Order\SessionOrderLookup;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\OrderToOrderResponse;
 use Magento\Sales\Model\Order;
 
@@ -33,15 +31,13 @@ class OrderHandler implements OrderHandlerInterface
     public const CODE_NOT_ACCEPTED = 'not_accepted';
 
     /**
-     * @param IncrementIdLookup $orderLookup
-     * @param OrderLinkRepositoryInterface $orderLinkRepository
+     * @param SessionOrderLookup $orderLookup
      * @param OrderToOrderResponse $orderConverter
      * @param AdjustmentRecorder $adjustmentRecorder
      * @param MessageInterfaceFactory $messageFactory
      */
     public function __construct(
-        private readonly IncrementIdLookup $orderLookup,
-        private readonly OrderLinkRepositoryInterface $orderLinkRepository,
+        private readonly SessionOrderLookup $orderLookup,
         private readonly OrderToOrderResponse $orderConverter,
         private readonly AdjustmentRecorder $adjustmentRecorder,
         private readonly MessageInterfaceFactory $messageFactory
@@ -52,11 +48,9 @@ class OrderHandler implements OrderHandlerInterface
     /**
      * @inheritDoc
      */
-    public function getOrder(string $orderId): OrderResponseInterface
+    public function getOrder(string $checkoutId): OrderResponseInterface
     {
-        [$order, $checkoutId] = $this->resolve($orderId);
-
-        return $this->orderConverter->convert($order, $checkoutId);
+        return $this->orderConverter->convert($this->resolve($checkoutId), $checkoutId);
     }
 
     /**
@@ -65,9 +59,9 @@ class OrderHandler implements OrderHandlerInterface
      *
      * @inheritDoc
      */
-    public function updateOrder(string $orderId, OrderUpdateRequestInterface $request): OrderResponseInterface
+    public function updateOrder(string $checkoutId, OrderUpdateRequestInterface $request): OrderResponseInterface
     {
-        [$order, $checkoutId] = $this->resolve($orderId);
+        $order = $this->resolve($checkoutId);
 
         $this->adjustmentRecorder->record($order, $request->getAdjustments() ?? []);
 
@@ -114,29 +108,25 @@ class OrderHandler implements OrderHandlerInterface
     }
 
     /**
-     * @param string $orderId
-     * @return array{Order, string} The order and the session it was placed from
-     * @throws UcpException When no order of that identifier came from this protocol
+     * Orders are reached only through the checkout session that placed them. The session id cannot be
+     * guessed, while the store's own order number runs in sequence and anyone could count up to it.
+     *
+     * @param string $checkoutId
+     * @return Order
+     * @throws UcpException When that session placed no order this protocol may hand out
      */
-    private function resolve(string $orderId): array
+    private function resolve(string $checkoutId): Order
     {
-        $order = $this->orderLookup->find($orderId);
-        $entityId = $order?->getEntityId();
-        $checkoutId = is_numeric($entityId)
-            ? $this->orderLinkRepository->findSessionId(IdempotencyHandler::SCOPE, (int) $entityId)
-            : null;
+        $order = $this->orderLookup->find($checkoutId);
 
-        // The spec has the business verify that the caller's own checkout produced this order. Until
-        // callers are authenticated, the link is what can be checked: an order placed through the
-        // storefront, or through the other protocol, is not this protocol's to hand out.
-        if ($order === null || $checkoutId === null) {
+        if ($order === null) {
             throw new UcpException(
-                __('Order not found: %1.', $orderId),
+                __('Order not found: %1.', $checkoutId),
                 'not_found',
                 404
             );
         }
 
-        return [$order, $checkoutId];
+        return $order;
     }
 }

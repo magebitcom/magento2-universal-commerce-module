@@ -71,7 +71,10 @@ class OrderToOrderResponse
         /** @var OrderResponseInterface $response */
         $response = $this->orderResponseFactory->create();
         $response->setUcp($this->getUcp());
-        $response->setId((string) $order->getIncrementId());
+        // The order is addressed by its checkout session, which nobody can guess. The store's own
+        // order number is only a label, because it runs in sequence and anyone could count up to it.
+        $response->setId($checkoutId);
+        $response->setLabel((string) $order->getIncrementId());
         $response->setCheckoutId($checkoutId);
         $response->setPermalinkUrl($this->permalinkUrl($order));
         $response->setLineItems($this->getLineItems($items, $lineItemIds, $currencyCode));
