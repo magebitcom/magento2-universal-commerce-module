@@ -22,8 +22,8 @@ use Magebit\UniversalCommerce\Test\Unit\SchemaAssert;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
 use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
-use Magebit\UniversalCommerce\Model\RequestClassBuilder;
-use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
+use Magebit\AgenticCore\Model\Request\Hydrator;
+use Magebit\AgenticCore\Model\Validation\RequestValidator;
 use Magento\Framework\App\Request\Http;
 use Magento\Framework\Controller\Result\Json as ResultJson;
 use Magento\Framework\Controller\Result\JsonFactory;
@@ -176,7 +176,7 @@ class ApiControllerTest extends TestCase
             $jsonFactory,
             $request,
             $this->createMock(RequestValidator::class),
-            $this->createMock(RequestClassBuilder::class),
+            $this->createMock(Hydrator::class),
             $config,
             $messageFactory,
             $this->createMock(IdempotencyHandler::class),

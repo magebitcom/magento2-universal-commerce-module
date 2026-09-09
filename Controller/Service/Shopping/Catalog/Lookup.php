@@ -18,8 +18,8 @@ use Magebit\UniversalCommerce\Controller\ApiController;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
 use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
-use Magebit\UniversalCommerce\Model\RequestClassBuilder;
-use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
+use Magebit\AgenticCore\Model\Request\Hydrator;
+use Magebit\AgenticCore\Model\Validation\RequestValidator;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Controller\Result\Json as ResultJson;
 use Magento\Framework\Controller\Result\JsonFactory;
@@ -34,7 +34,7 @@ class Lookup extends ApiController
      * @param JsonFactory $resultJsonFactory
      * @param RequestInterface $request
      * @param RequestValidator $requestValidator
-     * @param RequestClassBuilder $requestClassBuilder
+     * @param Hydrator $hydrator
      * @param Config $config
      * @param MessageErrorInterfaceFactory $messageFactory
      * @param IdempotencyHandler $idempotencyHandler
@@ -45,7 +45,7 @@ class Lookup extends ApiController
         JsonFactory $resultJsonFactory,
         RequestInterface $request,
         RequestValidator $requestValidator,
-        RequestClassBuilder $requestClassBuilder,
+        Hydrator $hydrator,
         Config $config,
         MessageErrorInterfaceFactory $messageFactory,
         IdempotencyHandler $idempotencyHandler,
@@ -57,7 +57,7 @@ class Lookup extends ApiController
             $resultJsonFactory,
             $request,
             $requestValidator,
-            $requestClassBuilder,
+            $hydrator,
             $config,
             $messageFactory,
             $idempotencyHandler,

@@ -37,12 +37,6 @@ parameters:
 			path: Model/CheckoutMeta/Model.php
 
 		-
-			message: '#^Parameter \#2 \$data of method Magebit\\UniversalCommerce\\Model\\RequestClassBuilder\:\:populateWithArray\(\) expects array\<mixed\>, mixed given\.$#'
-			identifier: argument.type
-			count: 1
-			path: Model/RequestClassBuilder.php
-
-		-
 			message: '#^Cannot access offset ''webhook_url'' on mixed\.$#'
 			identifier: offsetAccess.nonOffsetAccessible
 			count: 1
@@ -114,14 +108,3 @@ parameters:
 			count: 1
 			path: Model/Service/Shopping/Converter/QuoteToFulfillmentResponse.php
 
-		-
-			message: '#^Parameter \#1 \$objectOrClass of class ReflectionClass constructor expects class\-string\<T of object\>\|T of object, string given\.$#'
-			identifier: argument.type
-			count: 1
-			path: Model/Validation/RequestValidator.php
-
-		-
-			message: '#^Parameter \#1 \$string of function strtolower expects string, string\|null given\.$#'
-			identifier: argument.type
-			count: 1
-			path: Model/Validation/RequestValidator.php

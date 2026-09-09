@@ -20,9 +20,9 @@ use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Controller\Result\Json as ResultJson;
 use Magento\Framework\DataObject;
-use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
-use Magebit\UniversalCommerce\Model\Validation\ValidationResult;
-use Magebit\UniversalCommerce\Model\RequestClassBuilder;
+use Magebit\AgenticCore\Model\Validation\RequestValidator;
+use Magebit\AgenticCore\Model\Validation\ValidationResult;
+use Magebit\AgenticCore\Model\Request\Hydrator;
 use Magebit\UcpSpec\Api\Shopping\Types\ErrorResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageErrorInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageErrorInterfaceFactory;
@@ -54,7 +54,7 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
      * @param JsonFactory $resultJsonFactory
      * @param RequestInterface $request
      * @param RequestValidator $requestValidator
-     * @param RequestClassBuilder $requestClassBuilder
+     * @param Hydrator $hydrator
      * @param Config $config
      * @param MessageErrorInterfaceFactory $messageFactory
      * @param IdempotencyHandler $idempotencyHandler
@@ -65,7 +65,7 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
         protected readonly JsonFactory $resultJsonFactory,
         protected readonly RequestInterface $request,
         protected readonly RequestValidator $requestValidator,
-        protected readonly RequestClassBuilder $requestClassBuilder,
+        protected readonly Hydrator $hydrator,
         protected readonly Config $config,
         protected readonly MessageErrorInterfaceFactory $messageFactory,
         protected readonly IdempotencyHandler $idempotencyHandler,
@@ -128,7 +128,7 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
         }
 
         $requestObject = $factory();
-        $this->requestClassBuilder->populateWithArray($requestObject, $rawData, $classType);
+        $this->hydrator->populateWithArray($requestObject, $rawData, $classType);
 
         return $requestObject;
     }

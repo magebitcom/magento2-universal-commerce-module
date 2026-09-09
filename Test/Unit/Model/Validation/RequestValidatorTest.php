@@ -13,9 +13,14 @@ declare(strict_types=1);
 namespace Magebit\UniversalCommerce\Test\Unit\Model\Validation;
 
 use Magebit\UcpSpec\Api\Shopping\Types\AdjustmentInterface;
-use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
+use Magebit\AgenticCore\Model\Validation\ConstraintChecker;
+use Magebit\AgenticCore\Model\Validation\RequestValidator;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * The shared validator has its own tests against stub interfaces. This one proves the real generated
+ * interfaces carry what it reads, so a change in the specification library shows up here.
+ */
 class RequestValidatorTest extends TestCase
 {
     private RequestValidator $validator;
@@ -25,7 +30,7 @@ class RequestValidatorTest extends TestCase
      */
     protected function setUp(): void
     {
-        $this->validator = new RequestValidator();
+        $this->validator = new RequestValidator(new ConstraintChecker());
     }
 
     /**

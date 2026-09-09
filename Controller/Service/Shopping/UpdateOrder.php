@@ -19,9 +19,9 @@ use Magebit\UniversalCommerce\Controller\ApiController;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
 use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
-use Magebit\UniversalCommerce\Model\RequestClassBuilder;
-use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
-use Magebit\UniversalCommerce\Model\Validation\ValidationResult;
+use Magebit\AgenticCore\Model\Request\Hydrator;
+use Magebit\AgenticCore\Model\Validation\RequestValidator;
+use Magebit\AgenticCore\Model\Validation\ValidationResult;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Controller\Result\Json as ResultJson;
 use Magento\Framework\Controller\Result\JsonFactory;
@@ -35,7 +35,7 @@ class UpdateOrder extends ApiController
         JsonFactory $resultJsonFactory,
         RequestInterface $request,
         RequestValidator $requestValidator,
-        RequestClassBuilder $requestClassBuilder,
+        Hydrator $hydrator,
         Config $config,
         MessageErrorInterfaceFactory $messageFactory,
         IdempotencyHandler $idempotencyHandler,
@@ -48,7 +48,7 @@ class UpdateOrder extends ApiController
             $resultJsonFactory,
             $request,
             $requestValidator,
-            $requestClassBuilder,
+            $hydrator,
             $config,
             $messageFactory,
             $idempotencyHandler,
