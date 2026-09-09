@@ -35,17 +35,36 @@ class SpecSchemaValidator
     public const SCHEMA_DIR = 'libraries/ucp-php-spec/spec/schemas';
 
     /**
+     * A class from the installed specification package, used to find where that package lives.
+     */
+    public const RUNTIME_CLASS = 'Magebit\UcpSpec\Runtime\SpecObject';
+
+    /**
+     * Where the schemas sit inside that package.
+     */
+    public const PACKAGE_SCHEMA_DIR = 'spec/schemas';
+
+    /**
      * Collect a whole batch of divergences per run instead of only the first.
      */
     public const MAX_ERRORS = 50;
 
     /**
-     * Walks up from this file to find the project root holding the vendored spec.
+     * The schemas ship inside the installed specification package, so they are found through it
+     * rather than through a path. Walking up for a directory only this checkout has meant the
+     * schema tests skipped themselves everywhere else, reporting green while covering nothing.
      *
      * @return string|null
      */
     public static function locateSchemaDir(): ?string
     {
+        $installed = self::installedSchemaDir();
+
+        if ($installed !== null) {
+            return $installed;
+        }
+
+        // Falls back to the working copy, for anyone editing the specification library in place.
         $dir = __DIR__;
 
         while (true) {
@@ -63,6 +82,30 @@ class SpecSchemaValidator
 
             $dir = $parent;
         }
+    }
+
+    /**
+     * @return string|null
+     */
+    private static function installedSchemaDir(): ?string
+    {
+        if (!class_exists(self::RUNTIME_CLASS)) {
+            return null;
+        }
+
+        try {
+            $file = (new \ReflectionClass(self::RUNTIME_CLASS))->getFileName();
+        } catch (\ReflectionException $exception) {
+            return null;
+        }
+
+        if ($file === false) {
+            return null;
+        }
+
+        $candidate = dirname($file, 2) . '/' . self::PACKAGE_SCHEMA_DIR;
+
+        return is_dir($candidate) ? $candidate : null;
     }
 
     /**
