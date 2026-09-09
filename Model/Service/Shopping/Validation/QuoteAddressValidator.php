@@ -8,25 +8,49 @@
  * @license   MIT
  */
 
+declare(strict_types=1);
+
 namespace Magebit\UniversalCommerce\Model\Service\Shopping\Validation;
 
-use Magebit\AgenticCore\Model\Quote\RegionResolver;
+use Magebit\AgenticCore\Model\Quote\ReadinessCheck;
+use Magebit\AgenticCore\Model\Quote\Requirement;
+use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
+use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
 use Magebit\UniversalCommerce\Api\Service\Shopping\QuoteValidatorInterface;
 use Magento\Quote\Api\Data\CartInterface;
 use Magento\Quote\Model\Quote;
-use Magento\Quote\Model\Quote\Address;
-use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
-use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
 
+/**
+ * Reports what the quote still needs, in this protocol's words. What is missing is decided by the
+ * shared check; only the wording and the path each thing reports at belong here.
+ */
 class QuoteAddressValidator implements QuoteValidatorInterface
 {
     /**
+     * Where this protocol carries each field, and what to say when it is absent. The buyer's own
+     * details sit at the top level; the address sits inside the fulfillment method's destination.
+     */
+    private const DESTINATION = '$.fulfillment.methods[0].destination';
+
+    private const REPORTS = [
+        'FirstName' => ['First name is required', '$.buyer.first_name'],
+        'LastName' => ['Last name is required', '$.buyer.last_name'],
+        'Email' => ['An email address is required', '$.buyer.email'],
+        'PhoneNumber' => ['Telephone is required', '$.buyer.phone_number'],
+        'Street' => ['Street is required', self::DESTINATION . '.street_address'],
+        'City' => ['City is required', self::DESTINATION . '.address_locality'],
+        'Country' => ['Country is required', self::DESTINATION . '.address_country'],
+        'Postcode' => ['Postcode is required', self::DESTINATION . '.postal_code'],
+        'Region' => ['Region is required', self::DESTINATION . '.address_region'],
+    ];
+
+    /**
      * @param MessageInterfaceFactory $messageFactory
-     * @param RegionResolver $regionResolver
+     * @param ReadinessCheck $readinessCheck
      */
     public function __construct(
         protected readonly MessageInterfaceFactory $messageFactory,
-        protected readonly RegionResolver $regionResolver
+        protected readonly ReadinessCheck $readinessCheck
     ) {
     }
 
@@ -37,114 +61,60 @@ class QuoteAddressValidator implements QuoteValidatorInterface
     public function validate(CartInterface $quote): array|null
     {
         /** @var Quote $quote */
-        $errors = [];
+        $missing = $this->readinessCheck->contact($quote->getBillingAddress());
 
         if (!$quote->getCustomerEmail()) {
-            $errors[] = $this->createMessage('An email address is required', '$.buyer.email');
+            $missing[] = Requirement::Email;
         }
 
-        $errors = array_merge($errors, $this->validateBillingAddress($quote));
-        $errors = array_merge($errors, $this->validateShippingAddress($quote));
+        if (!$quote->getIsVirtual()) {
+            $missing = array_merge($missing, $this->readinessCheck->postal($quote->getShippingAddress()));
+        }
 
-        return $errors;
+        return $this->report(array_unique($missing, SORT_REGULAR), $quote);
     }
 
     /**
-     * @param CartInterface $quote
+     * @param Requirement[] $missing
+     * @param Quote $quote
      * @return MessageInterface[]
      */
-    public function validateBillingAddress(CartInterface $quote): array
+    private function report(array $missing, Quote $quote): array
     {
-        /** @var Quote $quote */
-        $billingAddress = $quote->getBillingAddress();
+        $messages = [];
 
-        $errors = [];
+        foreach ($missing as $requirement) {
+            if ($requirement === Requirement::UnknownRegion) {
+                $messages[] = $this->unknownRegion($quote);
 
-        if (!$billingAddress->getFirstName()) {
-            $errors[] = $this->createMessage('First name is required', '$.buyer.first_name');
+                continue;
+            }
+
+            [$content, $path] = self::REPORTS[$requirement->name];
+            $messages[] = $this->createMessage($content, $path);
         }
 
-        if (!$billingAddress->getLastName()) {
-            $errors[] = $this->createMessage('Last name is required', '$.buyer.last_name');
-        }
-
-        if (!$billingAddress->getTelephone()) {
-            $errors[] = $this->createMessage('Telephone is required', '$.buyer.phone_number');
-        }
-
-        return $errors;
+        return $messages;
     }
 
     /**
-     * @param CartInterface $quote
-     * @return MessageInterface[]
+     * @param Quote $quote
+     * @return MessageInterface
      */
-    public function validateShippingAddress(CartInterface $quote): array
+    private function unknownRegion(Quote $quote): MessageInterface
     {
-        /** @var Quote $quote */
-        $shippingAddress = $quote->getShippingAddress();
-
-        if ($quote->getIsVirtual()) {
-            return [];
-        }
-
-        $errors = [];
-
-        if (!$shippingAddress->getStreet()) {
-            $errors[] = $this->createMessage('Street is required', '$.fulfillment.methods[0].destination.street_address');
-        }
-
-        if (!$shippingAddress->getCity()) {
-            $errors[] = $this->createMessage('City is required', '$.fulfillment.methods[0].destination.address_locality');
-        }
-
-        if (!$shippingAddress->getCountry()) {
-            $errors[] = $this->createMessage('Country is required', '$.fulfillment.methods[0].destination.address_country');
-        }
-
-        if (!$shippingAddress->getPostcode()) {
-            $errors[] = $this->createMessage('Postcode is required', '$.fulfillment.methods[0].destination.postal_code');
-        }
-
-        $errors = array_merge($errors, $this->validateRegion($shippingAddress));
-
-        return $errors;
-    }
-
-    /**
-     * Most countries have no regions, so a region is demanded only where the store says one is needed —
-     * and where one arrived, it has to name a region the country actually has, since an unresolvable
-     * name would otherwise surface as a failure at completion rather than as a message here.
-     *
-     * @param Address $address
-     * @return MessageInterface[]
-     */
-    private function validateRegion(Address $address): array
-    {
-        $path = '$.fulfillment.methods[0].destination.address_region';
-        $countryId = (string) $address->getCountryId();
+        $address = $quote->getShippingAddress();
         $region = $address->getData('region');
-        $region = is_string($region) ? $region : '';
 
-        if ($countryId === '' || !$this->regionResolver->isRequiredFor($countryId)) {
-            return [];
-        }
-
-        if ($region === '') {
-            return [$this->createMessage('Region is required', $path)];
-        }
-
-        if ($this->regionResolver->resolve($countryId, $region) === null) {
-            return [
-                $this->createMessage(
-                    sprintf('"%s" is not a region of %s.', $region, $countryId),
-                    $path,
-                    'invalid'
-                ),
-            ];
-        }
-
-        return [];
+        return $this->createMessage(
+            sprintf(
+                '"%s" is not a region of %s.',
+                is_string($region) ? $region : '',
+                (string) $address->getCountryId()
+            ),
+            self::DESTINATION . '.address_region',
+            'invalid'
+        );
     }
 
     /**
