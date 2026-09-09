@@ -206,4 +206,15 @@
             </argument>
         </arguments>
     </type>
+    <type name="Magebit\UniversalCommerce\Cron\DispatchWebhooks">
+        <arguments>
+            <argument name="dueDeliveries" xsi:type="object">Magebit\UniversalCommerce\Model\Webhook\DueDeliveries</argument>
+        </arguments>
+    </type>
+    <virtualType name="Magebit\UniversalCommerce\Model\Webhook\DueDeliveries" type="Magebit\AgenticCore\Model\Webhook\DueDeliveries">
+        <arguments>
+            <argument name="dispatcher" xsi:type="object">Magebit\UniversalCommerce\Model\Webhook\Dispatcher</argument>
+            <argument name="scope" xsi:type="string">ucp</argument>
+        </arguments>
+    </virtualType>
 </config>

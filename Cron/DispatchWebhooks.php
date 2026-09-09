@@ -12,25 +12,21 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Cron;
 
-use Magebit\AgenticCore\Model\Webhook\Dispatcher;
+use Magebit\AgenticCore\Model\Webhook\DueDeliveries;
 use Magebit\UniversalCommerce\Model\Config;
-use Magebit\UniversalCommerce\Model\IdempotencyHandler;
-use Psr\Log\LoggerInterface;
 
 /**
- * Attempts this module's due order-event deliveries. The backoff, not the schedule, paces retries.
+ * Attempts this module's due order-event deliveries.
  */
 class DispatchWebhooks
 {
     /**
-     * @param Dispatcher $dispatcher
+     * @param DueDeliveries $dueDeliveries
      * @param Config $config
-     * @param LoggerInterface $logger
      */
     public function __construct(
-        private readonly Dispatcher $dispatcher,
-        private readonly Config $config,
-        private readonly LoggerInterface $logger
+        private readonly DueDeliveries $dueDeliveries,
+        private readonly Config $config
     ) {
     }
 
@@ -44,21 +40,6 @@ class DispatchWebhooks
             return 0;
         }
 
-        try {
-            $delivered = $this->dispatcher->dispatchDue(IdempotencyHandler::SCOPE);
-
-            if ($delivered > 0) {
-                $this->logger->info(sprintf('Delivered %d order event webhook(s).', $delivered));
-            }
-
-            return $delivered;
-        } catch (\Exception $exception) {
-            $this->logger->error(
-                sprintf('Error dispatching order event webhooks: %s', $exception->getMessage()),
-                ['exception' => $exception]
-            );
-
-            return 0;
-        }
+        return $this->dueDeliveries->execute();
     }
 }
