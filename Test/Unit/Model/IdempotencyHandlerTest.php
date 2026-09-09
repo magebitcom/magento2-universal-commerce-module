@@ -16,6 +16,7 @@ use Magebit\AgenticCore\Api\Data\IdempotencyRecordInterface;
 use Magebit\AgenticCore\Model\Idempotency\ClaimOutcome;
 use Magebit\AgenticCore\Model\Idempotency\ClaimResult;
 use Magebit\AgenticCore\Model\Idempotency\Coordinator;
+use Magebit\AgenticCore\Model\Idempotency\Gate;
 use Magebit\AgenticCore\Model\Idempotency\RequestHasher;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
@@ -102,13 +103,9 @@ class IdempotencyHandlerTest extends TestCase
             }
         );
 
-        $this->handler = new IdempotencyHandler(
-            $this->coordinator,
-            new RequestHasher(),
-            $resultJsonFactory,
-            $messageFactory,
-            $this->encryptor()
-        );
+        $gate = new Gate($this->coordinator, new RequestHasher(), $this->encryptor());
+
+        $this->handler = new IdempotencyHandler($gate, $resultJsonFactory, $messageFactory);
     }
 
     /**
