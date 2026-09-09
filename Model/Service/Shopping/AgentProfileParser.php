@@ -280,12 +280,35 @@ class AgentProfileParser
             if (is_array($entry) && isset($entry['config']['webhook_url'])) {
                 $url = $entry['config']['webhook_url'];
 
-                if (is_string($url) && $url !== '') {
+                if (is_string($url) && $url !== '' && $this->isCallableWebhookUrl($url)) {
                     return $url;
                 }
             }
         }
 
         return null;
+    }
+
+    /**
+     * The store posts to this address later, so it needs the same guard as the profile URL or it can
+     * point back inside our own network. A bad one is dropped, not fatal: the agent can still shop.
+     *
+     * @param string $url
+     * @return bool
+     */
+    private function isCallableWebhookUrl(string $url): bool
+    {
+        try {
+            $this->urlValidator->assertFetchable($url);
+
+            return true;
+        } catch (\Throwable $e) {
+            $this->logger->warning('Dropped an agent webhook URL the store is not allowed to call', [
+                'exception' => $e->getMessage(),
+                'url' => $url
+            ]);
+
+            return false;
+        }
     }
 }

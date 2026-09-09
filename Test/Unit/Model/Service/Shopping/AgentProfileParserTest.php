@@ -16,6 +16,7 @@ use Magebit\UcpSpec\Api\Shopping\OrderResponsePlatformSchemaInterfaceFactory;
 use Magebit\UcpSpec\Data\Shopping\OrderResponsePlatformSchema;
 use Magebit\UniversalCommerce\Model\Service\Shopping\AgentProfileParser;
 use Magebit\UniversalCommerce\Model\Service\Shopping\ProfileUrlValidator;
+use Magebit\UniversalCommerce\Model\Service\Shopping\TrustedProfileOrigins;
 use Magento\Framework\App\CacheInterface;
 use Magento\Framework\HTTP\Client\CurlFactory;
 use PHPUnit\Framework\TestCase;
@@ -24,6 +25,8 @@ use Psr\Log\LoggerInterface;
 class AgentProfileParserTest extends TestCase
 {
     private const WEBHOOK_URL = 'https://agent.test/hook';
+    private const PUBLIC_WEBHOOK_URL = 'https://93.184.216.34/hook';
+    private const INTERNAL_WEBHOOK_URL = 'https://169.254.169.254/latest/meta-data/';
 
     /** @var AgentProfileParser */
     private AgentProfileParser $parser;
@@ -33,20 +36,7 @@ class AgentProfileParserTest extends TestCase
      */
     protected function setUp(): void
     {
-        $factory = $this->createMock(OrderResponsePlatformSchemaInterfaceFactory::class);
-        $factory->method('create')
-            ->willReturnCallback(fn (): OrderResponsePlatformSchema => new OrderResponsePlatformSchema());
-
-        $cache = $this->createMock(CacheInterface::class);
-        $cache->method('load')->willReturn(false);
-
-        $this->parser = new AgentProfileParser(
-            $factory,
-            $this->createMock(CurlFactory::class),
-            $cache,
-            $this->createMock(LoggerInterface::class),
-            $this->createMock(ProfileUrlValidator::class)
-        );
+        $this->parser = $this->parserWith($this->createMock(ProfileUrlValidator::class));
     }
 
     /**
@@ -121,6 +111,95 @@ class AgentProfileParserTest extends TestCase
         $schema = $this->parser->parse($this->header(['ucp' => ['capabilities' => []]]));
 
         $this->assertFalse($schema->has(OrderResponsePlatformSchema::KEY_WEBHOOK_URL));
+    }
+
+    /**
+     * @return void
+     */
+    public function testAPublicWebhookUrlSurvivesTheGuard(): void
+    {
+        $parser = $this->parserWith(new ProfileUrlValidator($this->untrustingOrigins()));
+
+        $this->assertSame(
+            self::PUBLIC_WEBHOOK_URL,
+            $parser->parseWebhookUrl($this->headerWithWebhookUrl(self::PUBLIC_WEBHOOK_URL))
+        );
+    }
+
+    /**
+     * Without this the agent could name an address inside our own network and have the store post to it.
+     *
+     * @return void
+     */
+    public function testAWebhookUrlPointingInsideTheNetworkIsDropped(): void
+    {
+        $parser = $this->parserWith(new ProfileUrlValidator($this->untrustingOrigins()));
+
+        $this->assertNull($parser->parseWebhookUrl($this->headerWithWebhookUrl(self::INTERNAL_WEBHOOK_URL)));
+    }
+
+    /**
+     * A rejected URL must not turn a working checkout into an error.
+     *
+     * @return void
+     */
+    public function testARejectedWebhookUrlLeavesTheFieldUnsetInsteadOfRaising(): void
+    {
+        $parser = $this->parserWith(new ProfileUrlValidator($this->untrustingOrigins()));
+
+        $schema = $parser->parse($this->headerWithWebhookUrl(self::INTERNAL_WEBHOOK_URL));
+
+        $this->assertFalse($schema->has(OrderResponsePlatformSchema::KEY_WEBHOOK_URL));
+    }
+
+    /**
+     * @param ProfileUrlValidator $urlValidator
+     * @return AgentProfileParser
+     */
+    private function parserWith(ProfileUrlValidator $urlValidator): AgentProfileParser
+    {
+        $factory = $this->createMock(OrderResponsePlatformSchemaInterfaceFactory::class);
+        $factory->method('create')
+            ->willReturnCallback(fn (): OrderResponsePlatformSchema => new OrderResponsePlatformSchema());
+
+        $cache = $this->createMock(CacheInterface::class);
+        $cache->method('load')->willReturn(false);
+
+        return new AgentProfileParser(
+            $factory,
+            $this->createMock(CurlFactory::class),
+            $cache,
+            $this->createMock(LoggerInterface::class),
+            $urlValidator
+        );
+    }
+
+    /**
+     * @return TrustedProfileOrigins A list that names nothing, so only the routability rules decide
+     */
+    private function untrustingOrigins(): TrustedProfileOrigins
+    {
+        $origins = $this->createMock(TrustedProfileOrigins::class);
+        $origins->method('trusts')->willReturn(false);
+
+        return $origins;
+    }
+
+    /**
+     * @param string $webhookUrl
+     * @return string
+     */
+    private function headerWithWebhookUrl(string $webhookUrl): string
+    {
+        return $this->header([
+            'ucp' => [
+                'capabilities' => [
+                    'dev.ucp.shopping.order' => [
+                        ['version' => '2026-04-08', 'config' => ['webhook_url' => $webhookUrl]],
+                    ],
+                ],
+            ],
+        ]);
     }
 
     /**
