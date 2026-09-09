@@ -75,6 +75,15 @@ class CatalogHandlerTest extends TestCase
     private array $storeFilters = [];
 
     /**
+     * Every list of ids the handler narrowed a collection down to.
+     *
+     * @var array<int, mixed>
+     */
+    private array $idFilters = [];
+
+    private bool $distinctAsked = false;
+
+    /**
      * The rows the fake collection hands back.
      *
      * @var MagentoProduct[]
@@ -95,6 +104,8 @@ class CatalogHandlerTest extends TestCase
         $this->visibilities = [];
         $this->storeFilters = [];
         $this->items = [];
+        $this->idFilters = [];
+        $this->distinctAsked = false;
         $this->collections = 0;
         $this->total = 0;
     }
@@ -237,6 +248,24 @@ class CatalogHandlerTest extends TestCase
         $this->assertSame(137, $pagination->getTotalCount());
         $this->assertTrue($pagination->getHasNextPage());
         $this->assertSame('offset:20', $pagination->getCursor());
+    }
+
+    /**
+     * The text filter joins an attribute table, which can list one product on several rows. The page
+     * is read as distinct ids and the products fetched by those, so a page holds the number of
+     * products asked for rather than however many rows the join produced.
+     *
+     * @return void
+     */
+    public function testThePageIsReadAsDistinctProductIds(): void
+    {
+        $this->total = 2;
+        $this->items = [$this->product('ucp-one'), $this->product('ucp-two')];
+
+        $this->handler()->search('shoes', 20);
+
+        $this->assertTrue($this->distinctAsked);
+        $this->assertSame([[1, 2]], $this->idFilters);
     }
 
     /**
@@ -386,6 +415,7 @@ class CatalogHandlerTest extends TestCase
                 'getConnection',
                 'getAllIds',
                 'getIterator',
+                'addIdFilter',
             ])
             ->getMock();
 
@@ -394,6 +424,13 @@ class CatalogHandlerTest extends TestCase
 
         $collection->method('getSelect')->willReturn($this->select());
         $collection->method('getConnection')->willReturn($this->connection());
+        $collection->method('addIdFilter')->willReturnCallback(
+            function (mixed $ids, bool $exclude = false) use ($collection): ProductCollection {
+                $this->idFilters[] = $ids;
+
+                return $collection;
+            }
+        );
         $collection->method('getIterator')->willReturnCallback(
             fn (): \ArrayIterator => new \ArrayIterator($this->items)
         );
@@ -431,6 +468,13 @@ class CatalogHandlerTest extends TestCase
         $select->method('reset')->willReturnSelf();
         $select->method('columns')->willReturnSelf();
         $select->method('order')->willReturnSelf();
+        $select->method('distinct')->willReturnCallback(
+            function (bool $flag = true) use ($select): Select {
+                $this->distinctAsked = $this->distinctAsked || $flag;
+
+                return $select;
+            }
+        );
         $select->method('limit')->willReturnCallback(
             function (mixed $count = null, mixed $offset = null) use ($select): Select {
                 $this->pages[] = [$count, $offset];
@@ -443,12 +487,28 @@ class CatalogHandlerTest extends TestCase
     }
 
     /**
+     * @return string[] One id per row the fake collection holds
+     */
+    private function pageIdRows(): array
+    {
+        $ids = [];
+
+        for ($position = 1; $position <= count($this->items); $position++) {
+            $ids[] = (string) $position;
+        }
+
+        return $ids;
+    }
+
+    /**
      * @return AdapterInterface
      */
     private function connection(): AdapterInterface
     {
         $connection = $this->createMock(AdapterInterface::class);
         $connection->method('fetchOne')->willReturnCallback(fn (): string => (string) $this->total);
+        // The page is read as a list of ids, one for every row the fake collection holds.
+        $connection->method('fetchCol')->willReturnCallback(fn (): array => $this->pageIdRows());
 
         return $connection;
     }

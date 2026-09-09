@@ -139,13 +139,18 @@ class CatalogHandler implements CatalogHandlerInterface
 
         // Ordered and limited in the query. Reading every id and cutting the page in PHP meant one
         // full scan of the catalogue per request, and the cursor offset can be any number.
-        $collection->getSelect()->order('e.entity_id ' . Select::SQL_ASC)->limit($pageSize, $offset);
+        $ids = $this->pageIds($collection, $pageSize, $offset);
 
         $products = [];
 
-        foreach ($collection as $product) {
-            if ($product instanceof MagentoProduct) {
-                $products[] = $this->convert($product);
+        if ($ids !== []) {
+            $collection->addIdFilter($ids);
+            $collection->getSelect()->order('e.entity_id ' . Select::SQL_ASC);
+
+            foreach ($collection as $product) {
+                if ($product instanceof MagentoProduct) {
+                    $products[] = $this->convert($product);
+                }
             }
         }
 
@@ -333,6 +338,27 @@ class CatalogHandler implements CatalogHandlerInterface
     }
 
     /**
+     * Reads the ids for one page on a query of its own. The name-or-sku filter joins an attribute
+     * table, which can list one product on several rows, so limiting the main query would cut the
+     * page out of rows rather than products and hand back a short page.
+     *
+     * @param ProductCollection $collection Collection carrying the search filters
+     * @param int $pageSize How many products the page holds
+     * @param int $offset How many products to skip
+     * @return int[]
+     */
+    private function pageIds(ProductCollection $collection, int $pageSize, int $offset): array
+    {
+        $select = $this->bareSelect($collection);
+        $select->distinct(true);
+        $select->columns('e.entity_id');
+        $select->order('e.entity_id ' . Select::SQL_ASC);
+        $select->limit($pageSize, $offset);
+
+        return array_map('intval', $collection->getConnection()->fetchCol($select));
+    }
+
+    /**
      * Counts distinct ids on the collection's own query. The name-or-sku filter joins an attribute
      * table, which can list one product on several rows.
      *
@@ -341,14 +367,29 @@ class CatalogHandler implements CatalogHandlerInterface
      */
     private function totalOf(ProductCollection $collection): int
     {
-        $select = clone $collection->getSelect();
-        $select->reset(Select::COLUMNS);
-        $select->reset(Select::ORDER);
-        $select->reset(Select::LIMIT_COUNT);
-        $select->reset(Select::LIMIT_OFFSET);
+        $select = $this->bareSelect($collection);
         $select->columns(new Expression('COUNT(DISTINCT e.entity_id)'));
 
         return (int) $collection->getConnection()->fetchOne($select);
+    }
+
+    /**
+     * The collection's query with everything but its filters stripped, so a caller can ask its own
+     * question of the same rows.
+     *
+     * @param ProductCollection $collection
+     * @return Select
+     */
+    private function bareSelect(ProductCollection $collection): Select
+    {
+        $select = clone $collection->getSelect();
+        $select->reset(Select::COLUMNS);
+        $select->reset(Select::ORDER);
+        $select->reset(Select::GROUP);
+        $select->reset(Select::LIMIT_COUNT);
+        $select->reset(Select::LIMIT_OFFSET);
+
+        return $select;
     }
 
     /**
