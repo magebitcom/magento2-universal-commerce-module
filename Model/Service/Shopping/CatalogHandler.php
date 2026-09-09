@@ -33,7 +33,6 @@ use Magebit\UniversalCommerce\Api\UniversalCommerceProtocolInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
 use Magebit\UniversalCommerce\Model\Discovery\ServiceRegistry;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\ProductToUcpProduct;
-use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\Catalog\Helper\Image as ImageHelper;
 use Magento\Catalog\Model\Product as MagentoProduct;
 use Magento\Catalog\Model\Product\Attribute\Source\Status;
@@ -43,7 +42,6 @@ use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\Framework\DB\Select;
 use Magento\Framework\DB\Sql\Expression;
-use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Store\Model\Store;
 use Magento\Store\Model\StoreManagerInterface;
 
@@ -83,7 +81,6 @@ class CatalogHandler implements CatalogHandlerInterface
 
     /**
      * @param CollectionFactory $collectionFactory
-     * @param ProductRepositoryInterface $productRepository
      * @param ProductToUcpProduct $productConverter
      * @param CatalogSearchSearchResponseInterfaceFactory $searchResponseFactory
      * @param CatalogLookupLookupResponseInterfaceFactory $lookupResponseFactory
@@ -99,7 +96,6 @@ class CatalogHandler implements CatalogHandlerInterface
      */
     public function __construct(
         private readonly CollectionFactory $collectionFactory,
-        private readonly ProductRepositoryInterface $productRepository,
         private readonly ProductToUcpProduct $productConverter,
         private readonly CatalogSearchSearchResponseInterfaceFactory $searchResponseFactory,
         private readonly CatalogLookupLookupResponseInterfaceFactory $lookupResponseFactory,
@@ -167,16 +163,23 @@ class CatalogHandler implements CatalogHandlerInterface
      */
     public function lookup(array $ids): CatalogLookupLookupResponseInterface
     {
+        // Capped at the same size as a search page, because the endpoint is public and every extra id
+        // used to mean another product load in the same request.
+        $skus = array_map(
+            static fn (mixed $id): string => (string) $id,
+            array_slice(array_values($ids), 0, self::MAX_LIMIT)
+        );
+
+        $found = $this->findBySkus($skus);
         $products = [];
 
-        foreach ($ids as $id) {
-            $product = $this->findBySku((string) $id);
-
+        foreach ($skus as $sku) {
+            $product = $found[strtolower($sku)] ?? null;
 
             // An id that matches nothing is left out rather than failing the batch: an agent asking about
             // several products should still learn about the ones that exist.
             if ($product !== null) {
-                $products[] = $this->correlate($this->convert($product), (string) $id);
+                $products[] = $this->correlate($this->convert($product), $sku);
             }
         }
 
@@ -232,6 +235,33 @@ class CatalogHandler implements CatalogHandlerInterface
         }
 
         return $product;
+    }
+
+    /**
+     * Loads a whole batch of SKUs with one query. Keyed without case, the way the database compares
+     * SKUs, so a differently cased id still finds its product.
+     *
+     * @param string[] $skus
+     * @return array<string, MagentoProduct>
+     */
+    private function findBySkus(array $skus): array
+    {
+        if ($skus === []) {
+            return [];
+        }
+
+        $collection = $this->visibleProducts();
+        $collection->addAttributeToFilter('sku', ['in' => $skus]);
+
+        $found = [];
+
+        foreach ($collection as $product) {
+            if ($product instanceof MagentoProduct) {
+                $found[strtolower((string) $product->getSku())] = $product;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -291,18 +321,15 @@ class CatalogHandler implements CatalogHandlerInterface
     }
 
     /**
+     * Read through the same visible-products query as search, so a product the storefront hides is not
+     * something an agent can pull out by knowing its SKU.
+     *
      * @param string $sku
      * @return MagentoProduct|null
      */
     private function findBySku(string $sku): ?MagentoProduct
     {
-        try {
-            $product = $this->productRepository->get($sku);
-        } catch (NoSuchEntityException $exception) {
-            return null;
-        }
-
-        return $product instanceof MagentoProduct ? $product : null;
+        return $this->findBySkus([$sku])[strtolower($sku)] ?? null;
     }
 
     /**
