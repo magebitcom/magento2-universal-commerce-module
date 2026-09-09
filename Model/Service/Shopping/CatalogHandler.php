@@ -38,8 +38,11 @@ use Magento\Catalog\Helper\Image as ImageHelper;
 use Magento\Catalog\Model\Product as MagentoProduct;
 use Magento\Catalog\Model\Product\Attribute\Source\Status;
 use Magento\Catalog\Model\Product\Visibility;
+use Magento\Catalog\Model\ResourceModel\Product\Collection as ProductCollection;
 use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
+use Magento\Framework\DB\Select;
+use Magento\Framework\DB\Sql\Expression;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Store\Model\Store;
 use Magento\Store\Model\StoreManagerInterface;
@@ -136,14 +139,18 @@ class CatalogHandler implements CatalogHandlerInterface
 
         // Counted from distinct ids rather than getSize(): with the OR'd EAV filter above, the count
         // select over-reports, and an agent would page against a total that does not exist.
-        $ids = array_values(array_unique(array_map('intval', $collection->getAllIds())));
-        $total = count($ids);
-        $pageIds = array_slice($ids, $offset, $pageSize);
+        $total = $this->totalOf($collection);
+
+        // Ordered and limited in the query. Reading every id and cutting the page in PHP meant one
+        // full scan of the catalogue per request, and the cursor offset can be any number.
+        $collection->getSelect()->order('e.entity_id ' . Select::SQL_ASC)->limit($pageSize, $offset);
 
         $products = [];
 
-        foreach ($this->loadByIds($pageIds) as $product) {
-            $products[] = $this->convert($product);
+        foreach ($collection as $product) {
+            if ($product instanceof MagentoProduct) {
+                $products[] = $this->convert($product);
+            }
         }
 
         /** @var CatalogSearchSearchResponseInterface $response */
@@ -228,30 +235,6 @@ class CatalogHandler implements CatalogHandlerInterface
     }
 
     /**
-     * @param int[] $ids
-     * @return MagentoProduct[]
-     */
-    private function loadByIds(array $ids): array
-    {
-        if ($ids === []) {
-            return [];
-        }
-
-        $collection = $this->visibleProducts();
-        $collection->addIdFilter($ids);
-
-        $products = [];
-
-        foreach ($collection as $product) {
-            if ($product instanceof MagentoProduct) {
-                $products[] = $product;
-            }
-        }
-
-        return $products;
-    }
-
-    /**
      * The single-product response takes the richer detail type, which is the product plus option
      * selections. The extra fields need configurable option axes we do not read yet.
      *
@@ -323,9 +306,28 @@ class CatalogHandler implements CatalogHandlerInterface
     }
 
     /**
-     * @return \Magento\Catalog\Model\ResourceModel\Product\Collection
+     * Counts distinct ids on the collection's own query. The name-or-sku filter joins an attribute
+     * table, which can list one product on several rows.
+     *
+     * @param ProductCollection $collection
+     * @return int
      */
-    private function visibleProducts(): \Magento\Catalog\Model\ResourceModel\Product\Collection
+    private function totalOf(ProductCollection $collection): int
+    {
+        $select = clone $collection->getSelect();
+        $select->reset(Select::COLUMNS);
+        $select->reset(Select::ORDER);
+        $select->reset(Select::LIMIT_COUNT);
+        $select->reset(Select::LIMIT_OFFSET);
+        $select->columns(new Expression('COUNT(DISTINCT e.entity_id)'));
+
+        return (int) $collection->getConnection()->fetchOne($select);
+    }
+
+    /**
+     * @return ProductCollection
+     */
+    private function visibleProducts(): ProductCollection
     {
         $collection = $this->collectionFactory->create();
         $collection->addAttributeToSelect(['name', 'description', 'price', 'image', 'status', 'visibility']);
