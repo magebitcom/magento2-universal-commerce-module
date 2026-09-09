@@ -21,6 +21,7 @@ use Magebit\UcpSpec\Api\Shopping\Types\LineItemCreateRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\DiscountResponseDiscountsObjectInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
+use Magebit\AgenticCore\Model\Buyer\BuyerWriter;
 use Magebit\AgenticCore\Model\Quote\AddressWriter;
 use Magebit\AgenticCore\Model\Quote\RegionResolver;
 use Magebit\AgenticCore\Model\Quote\LineItemOutcome;
@@ -103,7 +104,8 @@ class CheckoutDataProcessorTest extends TestCase
             $this->couponManagement,
             $this->agentProfileParser,
             $this->httpRequest,
-            $messageFactory
+            $messageFactory,
+            new BuyerWriter()
         );
     }
 

@@ -29,7 +29,7 @@ use Magebit\UcpSpec\Data\Shopping\Types\Product;
 use Magebit\UcpSpec\Data\Shopping\Types\Variant;
 use Magebit\UcpSpec\Data\Shopping\Types\VariantAvailability;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\ProductToUcpProduct;
-use Magebit\UniversalCommerce\Model\Service\Shopping\StockAvailability;
+use Magebit\AgenticCore\Model\Stock\Availability;
 use Magento\Catalog\Model\Product as MagentoProduct;
 use Magento\Framework\Pricing\PriceCurrencyInterface;
 use PHPUnit\Framework\TestCase;
@@ -164,7 +164,7 @@ class ProductToUcpProductTest extends TestCase
      */
     private function converter(bool $isSalable = true): ProductToUcpProduct
     {
-        $stock = $this->createMock(StockAvailability::class);
+        $stock = $this->createMock(Availability::class);
         $stock->method('isSalable')->willReturn($isSalable);
 
         return new ProductToUcpProduct(

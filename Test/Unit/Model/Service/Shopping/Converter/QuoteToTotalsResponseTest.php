@@ -16,6 +16,7 @@ use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
 use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
 use Magebit\AgenticCore\Model\Money\MinorUnits;
+use Magebit\AgenticCore\Model\Total\TypeLabel;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\QuoteToTotalsResponse;
 use Magebit\UcpSpec\Data\Shopping\Types\TotalResponse;
 use Magebit\UniversalCommerce\Test\Unit\Model\Stub\TotalRow;
@@ -47,7 +48,7 @@ class QuoteToTotalsResponseTest extends TestCase
         $factory = $this->createMock(TotalResponseInterfaceFactory::class);
         $factory->method('create')->willReturnCallback(fn (): TotalResponse => new TotalResponse());
 
-        $this->converter = new QuoteToTotalsResponse($factory, new MinorUnits(), self::MAPPING);
+        $this->converter = new QuoteToTotalsResponse($factory, new MinorUnits(), new TypeLabel(), self::MAPPING);
     }
 
     /**

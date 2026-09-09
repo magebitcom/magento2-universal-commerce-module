@@ -20,6 +20,8 @@ use Magebit\UcpSpec\Api\Shopping\Types\LineItemUpdateRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\PostalAddressInterface;
+use Magebit\AgenticCore\Model\Buyer\BuyerIdentity;
+use Magebit\AgenticCore\Model\Buyer\BuyerWriter;
 use Magebit\AgenticCore\Model\Quote\AddressWriter;
 use Magebit\AgenticCore\Model\Quote\LineItemOutcome;
 use Magebit\AgenticCore\Model\Quote\LineItemResult;
@@ -61,6 +63,7 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
      * @param AgentProfileParser $agentProfileParser
      * @param Http $httpRequest
      * @param MessageInterfaceFactory $messageFactory
+     * @param BuyerWriter $buyerWriter
      */
     public function __construct(
         protected readonly LineItemWriter $lineItemWriter,
@@ -70,7 +73,8 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
         protected readonly GuestCouponManagementInterface $guestCouponManagement,
         protected readonly AgentProfileParser $agentProfileParser,
         protected readonly Http $httpRequest,
-        protected readonly MessageInterfaceFactory $messageFactory
+        protected readonly MessageInterfaceFactory $messageFactory,
+        protected readonly BuyerWriter $buyerWriter
     ) {
     }
 
@@ -190,35 +194,17 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
     public function processBuyerInformation(CartInterface $cart, BuyerInterface $buyer): void
     {
         /** @var Quote $cart */
-        if ($buyer->getEmail()) {
-            $cart->setCustomerEmail($buyer->getEmail());
-        }
+        $identity = new BuyerIdentity(
+            $buyer->getFirstName(),
+            $buyer->getLastName(),
+            $buyer->getEmail(),
+            $buyer->getPhoneNumber()
+        );
 
-        if ($buyer->getFirstName()) {
-            $cart->setCustomerFirstname($buyer->getFirstName());
-        }
-
-        if ($buyer->getLastName()) {
-            $cart->setCustomerLastname($buyer->getLastName());
-        }
-
-        $billingAddress = $cart->getBillingAddress();
-
-        if ($buyer->getEmail()) {
-            $billingAddress->setEmail($buyer->getEmail());
-        }
-
-        if ($buyer->getFirstName()) {
-            $billingAddress->setFirstname($buyer->getFirstName());
-        }
-
-        if ($buyer->getLastName()) {
-            $billingAddress->setLastname($buyer->getLastName());
-        }
-
-        if ($buyer->getPhoneNumber()) {
-            $billingAddress->setTelephone($buyer->getPhoneNumber());
-        }
+        $this->buyerWriter->writeCustomer($cart, $identity);
+        // The billing address, not the shipping one: this protocol carries the delivery destination
+        // inside the fulfillment request instead.
+        $this->buyerWriter->writeContact($cart->getBillingAddress(), $identity);
     }
 
     /**

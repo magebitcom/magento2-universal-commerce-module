@@ -13,6 +13,7 @@ declare(strict_types=1);
 namespace Magebit\UniversalCommerce\Model\Service\Shopping\Converter;
 
 use Magebit\AgenticCore\Model\Money\MinorUnits;
+use Magebit\AgenticCore\Model\Total\TypeLabel;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
 use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
@@ -49,11 +50,13 @@ class QuoteToTotalsResponse
     /**
      * @param TotalResponseInterfaceFactory $totalResponseFactory
      * @param MinorUnits $minorUnits
+     * @param TypeLabel $typeLabel
      * @param array<string, string> $typeMapping
      */
     public function __construct(
         private readonly TotalResponseInterfaceFactory $totalResponseFactory,
         private readonly MinorUnits $minorUnits,
+        private readonly TypeLabel $typeLabel,
         private readonly array $typeMapping = [],
     ) {
     }
@@ -94,7 +97,7 @@ class QuoteToTotalsResponse
             /** @var TotalResponseInterface $total */
             $total = $this->totalResponseFactory->create();
             $total->setType($type);
-            $total->setDisplayText($labels[$type] ?? $this->fallbackLabel($type));
+            $total->setDisplayText($this->typeLabel->orFallback($labels[$type] ?? null, $type));
             $total->setAmount($this->minorUnits->convert($this->signed($type, $amounts[$type]), $currencyCode));
 
             $totals[] = $total;
@@ -162,14 +165,5 @@ class QuoteToTotalsResponse
         $type = $this->typeMapping[$magentoCode] ?? null;
 
         return in_array($type, self::TYPE_ORDER, true) ? $type : null;
-    }
-
-    /**
-     * @param string $type
-     * @return string
-     */
-    private function fallbackLabel(string $type): string
-    {
-        return ucfirst(str_replace('_', ' ', $type));
     }
 }

@@ -27,7 +27,7 @@ use Magebit\UcpSpec\Api\Shopping\Types\VariantAvailabilityInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\VariantAvailabilityInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\VariantInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\VariantInterfaceFactory;
-use Magebit\UniversalCommerce\Model\Service\Shopping\StockAvailability;
+use Magebit\AgenticCore\Model\Stock\Availability;
 use Magento\Catalog\Model\Product as MagentoProduct;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 
@@ -51,7 +51,7 @@ class ProductToUcpProduct
      * @param MediaInterfaceFactory $mediaFactory
      * @param VariantAvailabilityInterfaceFactory $availabilityFactory
      * @param MinorUnits $minorUnits
-     * @param StockAvailability $stock
+     * @param Availability $stock
      */
     public function __construct(
         private readonly ProductInterfaceFactory $productFactory,
@@ -62,7 +62,7 @@ class ProductToUcpProduct
         private readonly MediaInterfaceFactory $mediaFactory,
         private readonly VariantAvailabilityInterfaceFactory $availabilityFactory,
         private readonly MinorUnits $minorUnits,
-        private readonly StockAvailability $stock
+        private readonly Availability $stock
     ) {
     }
 
