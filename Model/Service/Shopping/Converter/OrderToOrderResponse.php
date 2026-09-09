@@ -124,6 +124,8 @@ class OrderToOrderResponse
     public function getLineItems(array $items, array $lineItemIds, string $currencyCode): array
     {
         $lineItems = [];
+        // One product load for the whole order, rather than one for every line.
+        $imageUrls = $this->lineItemConverter->imageUrls($items);
 
         foreach ($items as $item) {
             $itemId = (int) $item->getItemId();
@@ -134,7 +136,8 @@ class OrderToOrderResponse
                 $item,
                 $currencyCode,
                 $lineItemIds[$itemId] ?? (string) $itemId,
-                $parentId
+                $parentId,
+                $imageUrls[(int) $item->getProductId()] ?? null
             );
         }
 

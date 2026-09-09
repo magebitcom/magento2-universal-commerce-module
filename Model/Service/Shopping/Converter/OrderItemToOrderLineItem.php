@@ -22,9 +22,10 @@ use Magebit\UcpSpec\Api\Shopping\Types\OrderLineItemQuantityInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
 use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
-use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\Catalog\Helper\Image as ImageHelper;
 use Magento\Catalog\Model\Product;
+use Magento\Catalog\Model\ResourceModel\Product\Collection as ProductCollection;
+use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
 use Magento\Sales\Api\Data\OrderItemInterface;
 
 /**
@@ -34,11 +35,21 @@ use Magento\Sales\Api\Data\OrderItemInterface;
 class OrderItemToOrderLineItem
 {
     /**
+     * Image the thumbnail is taken from, the same one the storefront shows on a product page.
+     */
+    private const IMAGE_ID = 'product_base_image';
+
+    /**
+     * Tells Magento the stock filter is already handled, so an out-of-stock product keeps its picture.
+     */
+    private const STOCK_FILTER_FLAG = 'has_stock_status_filter';
+
+    /**
      * @param OrderLineItemInterfaceFactory $lineItemFactory
      * @param OrderLineItemQuantityInterfaceFactory $quantityFactory
      * @param ItemResponseInterfaceFactory $itemFactory
      * @param TotalResponseInterfaceFactory $totalFactory
-     * @param ProductRepositoryInterface $productRepository
+     * @param CollectionFactory $productCollectionFactory
      * @param ImageHelper $imageHelper
      * @param MinorUnits $minorUnits
      */
@@ -47,10 +58,55 @@ class OrderItemToOrderLineItem
         private readonly OrderLineItemQuantityInterfaceFactory $quantityFactory,
         private readonly ItemResponseInterfaceFactory $itemFactory,
         private readonly TotalResponseInterfaceFactory $totalFactory,
-        private readonly ProductRepositoryInterface $productRepository,
+        private readonly CollectionFactory $productCollectionFactory,
         private readonly ImageHelper $imageHelper,
         private readonly MinorUnits $minorUnits
     ) {
+    }
+
+    /**
+     * Looks the pictures up for a whole order in one product load, so a long order does not load a
+     * product per line. A product deleted since the order was placed is simply absent from the result.
+     *
+     * @param OrderItemInterface[] $orderItems
+     * @return array<int, string> Product id to the URL of its picture
+     */
+    public function imageUrls(array $orderItems): array
+    {
+        $productIds = [];
+        $storeId = 0;
+
+        foreach ($orderItems as $orderItem) {
+            $productId = (int) $orderItem->getProductId();
+
+            if ($productId === 0) {
+                continue;
+            }
+
+            $productIds[$productId] = $productId;
+            // Every item of an order belongs to the same store.
+            $storeId = (int) $orderItem->getStoreId();
+        }
+
+        if ($productIds === []) {
+            return [];
+        }
+
+        $urls = [];
+
+        foreach ($this->productCollection($productIds, $storeId)->getItems() as $product) {
+            if (!$product instanceof Product) {
+                continue;
+            }
+
+            $url = $this->imageUrlOf($product);
+
+            if ($url !== null) {
+                $urls[(int) $product->getId()] = $url;
+            }
+        }
+
+        return $urls;
     }
 
     /**
@@ -58,20 +114,22 @@ class OrderItemToOrderLineItem
      * @param string $currencyCode
      * @param string $lineItemId Identifier the response exposes for this item
      * @param string|null $parentId Identifier of the enclosing line item, for nested products
+     * @param string|null $imageUrl Picture already looked up for this item, from `imageUrls()`
      * @return OrderLineItemInterface
      */
     public function convert(
         OrderItemInterface $orderItem,
         string $currencyCode,
         string $lineItemId,
-        ?string $parentId = null
+        ?string $parentId = null,
+        ?string $imageUrl = null
     ): OrderLineItemInterface {
         $quantity = $this->convertQuantity($orderItem);
 
         /** @var OrderLineItemInterface $lineItem */
         $lineItem = $this->lineItemFactory->create();
         $lineItem->setId($lineItemId);
-        $lineItem->setItem($this->convertItem($orderItem, $currencyCode));
+        $lineItem->setItem($this->convertItem($orderItem, $currencyCode, $imageUrl));
         $lineItem->setQuantity($quantity);
         $lineItem->setTotals($this->convertTotals($orderItem, $currencyCode));
         $lineItem->setStatus($this->deriveStatus($quantity));
@@ -153,17 +211,19 @@ class OrderItemToOrderLineItem
     /**
      * @param OrderItemInterface $orderItem
      * @param string $currencyCode
+     * @param string|null $imageUrl
      * @return ItemResponseInterface
      */
-    public function convertItem(OrderItemInterface $orderItem, string $currencyCode): ItemResponseInterface
-    {
+    public function convertItem(
+        OrderItemInterface $orderItem,
+        string $currencyCode,
+        ?string $imageUrl = null
+    ): ItemResponseInterface {
         /** @var ItemResponseInterface $item */
         $item = $this->itemFactory->create();
         $item->setId((string) $orderItem->getSku());
         $item->setTitle((string) $orderItem->getName());
         $item->setPrice($this->minorUnits->convert((float) $orderItem->getPrice(), $currencyCode));
-
-        $imageUrl = $this->getProductImageUrl($orderItem);
 
         if ($imageUrl !== null) {
             $item->setImageUrl($imageUrl);
@@ -235,27 +295,31 @@ class OrderItemToOrderLineItem
     }
 
     /**
-     * A product deleted since the order was placed is normal, and costs the agent only the thumbnail.
+     * @param int[] $productIds
+     * @param int $storeId
+     * @return ProductCollection
+     */
+    private function productCollection(array $productIds, int $storeId): ProductCollection
+    {
+        $collection = $this->productCollectionFactory->create();
+        $collection->addIdFilter(array_values($productIds));
+        $collection->addAttributeToSelect(['image', 'small_image', 'thumbnail']);
+        $collection->setStoreId($storeId);
+        $collection->setFlag(self::STOCK_FILTER_FLAG, true);
+
+        return $collection;
+    }
+
+    /**
+     * A picture that cannot be built costs the agent only the thumbnail, so it is not worth failing on.
      *
-     * @param OrderItemInterface $orderItem
+     * @param Product $product
      * @return string|null
      */
-    private function getProductImageUrl(OrderItemInterface $orderItem): ?string
+    private function imageUrlOf(Product $product): ?string
     {
-        $productId = $orderItem->getProductId();
-
-        if ($productId === null) {
-            return null;
-        }
-
         try {
-            $product = $this->productRepository->getById((int) $productId, false, (int) $orderItem->getStoreId());
-
-            if (!$product instanceof Product) {
-                return null;
-            }
-
-            return $this->imageHelper->init($product, 'product_base_image')->getUrl() ?: null;
+            return $this->imageHelper->init($product, self::IMAGE_ID)->getUrl() ?: null;
         } catch (\Exception $exception) {
             return null;
         }
