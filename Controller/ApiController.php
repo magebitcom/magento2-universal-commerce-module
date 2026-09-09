@@ -13,9 +13,7 @@ declare(strict_types=1);
 namespace Magebit\UniversalCommerce\Controller;
 
 use JsonSerializable;
-use Magento\Framework\App\ActionInterface;
-use Magento\Framework\App\CsrfAwareActionInterface;
-use Magento\Framework\App\Request\InvalidRequestException;
+use Magebit\AgenticCore\Controller\JsonController;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Controller\Result\Json as ResultJson;
@@ -31,14 +29,13 @@ use Magebit\UcpSpec\Api\UcpErrorInterface;
 use Magebit\UniversalCommerce\Api\UniversalCommerceProtocolInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
 use Magebit\UniversalCommerce\Exception\UcpMessagesException;
-use Magento\Framework\App\Request\Http;
 use Magento\Framework\Exception\LocalizedException;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
 use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
 use Psr\Log\LoggerInterface;
 
-abstract class ApiController implements ActionInterface, CsrfAwareActionInterface
+abstract class ApiController extends JsonController
 {
     /**
      * Trace header the spec marks required on every request, and which responses echo back.
@@ -62,8 +59,8 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
      * @param VersionNegotiator $versionNegotiator
      */
     public function __construct(
-        protected readonly JsonFactory $resultJsonFactory,
-        protected readonly RequestInterface $request,
+        JsonFactory $resultJsonFactory,
+        RequestInterface $request,
         protected readonly RequestValidator $requestValidator,
         protected readonly Hydrator $hydrator,
         protected readonly Config $config,
@@ -72,6 +69,7 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
         protected readonly LoggerInterface $logger,
         protected readonly VersionNegotiator $versionNegotiator
     ) {
+        parent::__construct($resultJsonFactory, $request);
     }
 
     /**
@@ -228,18 +226,6 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
     }
 
     /**
-     * The validator reports dot-notation paths; `message.path` is an RFC 9535 JSONPath, which roots at
-     * `$` and brackets array positions.
-     *
-     * @param string $dotted
-     * @return string
-     */
-    public function jsonPath(string $dotted): string
-    {
-        return '$.' . preg_replace('/\.(\d+)(?=\.|$)/', '[$1]', $dotted);
-    }
-
-    /**
      * Every session-scoped action needs the identifier the router captured, and reports its absence
      * identically. Kept here so the four of them cannot drift into four different message shapes.
      *
@@ -251,19 +237,6 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
             [$this->errorMessage('invalid_request', 'A checkout session identifier is required.')],
             400
         );
-    }
-
-    /**
-     * The request body as an array. The catalog operations take small bodies with no session, so they
-     * read them directly rather than through a generated request class.
-     *
-     * @return array<mixed>
-     */
-    protected function decodedBody(): array
-    {
-        $decoded = json_decode((string) $this->getHttpRequest()->getContent(), true);
-
-        return is_array($decoded) ? $decoded : [];
     }
 
     /**
@@ -328,7 +301,7 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
     }
 
     /**
-     * Make JSON response
+     * Every response echoes the trace header the request came in with.
      *
      * @param array<mixed>|DataObject|JsonSerializable $data
      * @param int $statusCode
@@ -336,10 +309,7 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
      */
     public function makeJsonResponse(array|DataObject|JsonSerializable $data, int $statusCode = 200): ResultJson
     {
-        $resultJson = $this->resultJsonFactory->create();
-        $resultJson->setData($data);
-        $resultJson->setHttpResponseCode($statusCode);
-
+        $resultJson = parent::makeJsonResponse($data, $statusCode);
         $requestId = $this->getHttpRequest()->getHeader(self::HEADER_REQUEST_ID);
 
         if (is_string($requestId) && $requestId !== '') {
@@ -347,38 +317,5 @@ abstract class ApiController implements ActionInterface, CsrfAwareActionInterfac
         }
 
         return $resultJson;
-    }
-
-    /**
-     * @param RequestInterface $request
-     * @return InvalidRequestException|null
-     */
-    public function createCsrfValidationException(RequestInterface $request): ?InvalidRequestException
-    {
-        return null;
-    }
-
-    /**
-     * @param RequestInterface $request
-     * @return bool|null
-     */
-    public function validateForCsrf(RequestInterface $request): ?bool
-    {
-        return true;
-    }
-
-    /**
-     * @return Http
-     */
-    public function getHttpRequest(): Http
-    {
-        /** @var Http $request */
-        $request = $this->request;
-
-        if (!$request instanceof Http) {
-            throw new LocalizedException(__('Invalid request'));
-        }
-
-        return $request;
     }
 }
