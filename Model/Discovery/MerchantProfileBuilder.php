@@ -11,13 +11,13 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Discovery;
 
-use Magebit\UcpSpec\Api\Discovery\ProfileSchemaInterface as DiscoveryProfileInterface;
-use Magebit\UcpSpec\Api\Discovery\ProfileSchemaInterfaceFactory as DiscoveryProfileInterfaceFactory;
+use Magebit\UcpSpec\Api\Discovery\ProfileSchemaInterface;
+use Magebit\UcpSpec\Api\Discovery\ProfileSchemaInterfaceFactory;
 use Magebit\UcpSpec\Api\Discovery\ProfileSchemaSigningKeyInterface;
 use Magebit\UcpSpec\Api\Discovery\ProfileSchemaSigningKeyInterfaceFactory;
 
-use Magebit\UcpSpec\Api\UcpBusinessSchemaInterface as UcpProfileInterface;
-use Magebit\UcpSpec\Api\UcpBusinessSchemaInterfaceFactory as UcpProfileInterfaceFactory;
+use Magebit\UcpSpec\Api\UcpBusinessSchemaInterface;
+use Magebit\UcpSpec\Api\UcpBusinessSchemaInterfaceFactory;
 use Magebit\UcpSpec\Api\ServiceBusinessSchemaInterface;
 use Magebit\UcpSpec\Api\CapabilityBusinessSchemaInterface;
 use Magebit\AgenticCore\Api\SigningKeyRepositoryInterface;
@@ -33,15 +33,15 @@ class MerchantProfileBuilder
     private const KEY_STORE_ID = 0;
 
     /**
-     * @param DiscoveryProfileInterfaceFactory $discoveryProfileFactory
-     * @param UcpProfileInterfaceFactory $ucpProfileFactory
+     * @param ProfileSchemaInterfaceFactory $discoveryProfileFactory
+     * @param UcpBusinessSchemaInterfaceFactory $ucpProfileFactory
      * @param ServiceRegistry $serviceRegistry
      * @param SigningKeyRepositoryInterface $signingKeys
      * @param ProfileSchemaSigningKeyInterfaceFactory $jwkFactory
      */
     public function __construct(
-        private readonly DiscoveryProfileInterfaceFactory $discoveryProfileFactory,
-        private readonly UcpProfileInterfaceFactory $ucpProfileFactory,
+        private readonly ProfileSchemaInterfaceFactory $discoveryProfileFactory,
+        private readonly UcpBusinessSchemaInterfaceFactory $ucpProfileFactory,
         private readonly ServiceRegistry $serviceRegistry,
         private readonly SigningKeyRepositoryInterface $signingKeys,
         private readonly ProfileSchemaSigningKeyInterfaceFactory $jwkFactory,
@@ -49,14 +49,14 @@ class MerchantProfileBuilder
     }
 
     /**
-     * @return DiscoveryProfileInterface
+     * @return ProfileSchemaInterface
      */
-    public function build(): DiscoveryProfileInterface
+    public function build(): ProfileSchemaInterface
     {
         return $this->discoveryProfileFactory->create([
             'data' => [
-                DiscoveryProfileInterface::KEY_UCP => $this->buildUcp(),
-                DiscoveryProfileInterface::KEY_SIGNING_KEYS => $this->buildSigningKeys(),
+                ProfileSchemaInterface::KEY_UCP => $this->buildUcp(),
+                ProfileSchemaInterface::KEY_SIGNING_KEYS => $this->buildSigningKeys(),
             ]
         ]);
     }
@@ -89,9 +89,9 @@ class MerchantProfileBuilder
     }
 
     /**
-     * @return UcpProfileInterface
+     * @return UcpBusinessSchemaInterface
      */
-    public function buildUcp(): UcpProfileInterface
+    public function buildUcp(): UcpBusinessSchemaInterface
     {
         $registeredServices = $this->serviceRegistry->getServices();
         $services = [];
@@ -119,10 +119,10 @@ class MerchantProfileBuilder
 
         return $this->ucpProfileFactory->create([
             'data' => [
-                UcpProfileInterface::KEY_VERSION => UniversalCommerceProtocolInterface::SPEC_VERSION,
-                UcpProfileInterface::KEY_SERVICES => $services,
-                UcpProfileInterface::KEY_CAPABILITIES => $capabilities,
-                UcpProfileInterface::KEY_PAYMENT_HANDLERS => [],
+                UcpBusinessSchemaInterface::KEY_VERSION => UniversalCommerceProtocolInterface::SPEC_VERSION,
+                UcpBusinessSchemaInterface::KEY_SERVICES => $services,
+                UcpBusinessSchemaInterface::KEY_CAPABILITIES => $capabilities,
+                UcpBusinessSchemaInterface::KEY_PAYMENT_HANDLERS => [],
             ]
         ]);
     }
