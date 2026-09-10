@@ -12,11 +12,12 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Service\Shopping\Converter;
 
+use Magebit\AgenticCore\Model\Fulfillment\ShippingOption;
+use Magebit\AgenticCore\Model\Fulfillment\ShippingOptionResolver;
 use Magento\Quote\Api\Data\CartInterface;
 use Magento\Quote\Model\Quote;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentResponseInterfaceFactory;
-use Magento\Quote\Model\Quote\Address\Rate;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentMethodResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentMethodResponseInterfaceFactory;
 use Magento\Quote\Model\Quote\Address;
@@ -27,6 +28,7 @@ use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentOptionResponseInterfaceFactory
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentDestinationResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentDestinationResponseInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
+use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
 
 class QuoteToFulfillmentResponse
@@ -44,7 +46,7 @@ class QuoteToFulfillmentResponse
      * @param FulfillmentOptionResponseInterfaceFactory $fulfillmentOptionResponseFactory
      * @param FulfillmentDestinationResponseInterfaceFactory $fulfillmentDestinationResponseFactory
      * @param TotalResponseInterfaceFactory $totalResponseFactory
-     * @param PriceConverter $priceConverter
+     * @param ShippingOptionResolver $shippingOptionResolver
      */
     public function __construct(
         protected readonly FulfillmentResponseInterfaceFactory $fulfillmentResponseFactory,
@@ -53,7 +55,7 @@ class QuoteToFulfillmentResponse
         protected readonly FulfillmentOptionResponseInterfaceFactory $fulfillmentOptionResponseFactory,
         protected readonly FulfillmentDestinationResponseInterfaceFactory $fulfillmentDestinationResponseFactory,
         protected readonly TotalResponseInterfaceFactory $totalResponseFactory,
-        protected readonly PriceConverter $priceConverter
+        protected readonly ShippingOptionResolver $shippingOptionResolver
     ) {
     }
 
@@ -75,9 +77,7 @@ class QuoteToFulfillmentResponse
             return null;
         }
 
-        $shippingAddress->setCollectShippingRates(true);
-        $shippingAddress->collectShippingRates();
-
+        // The shared resolver collects the rates; nothing here needs to prompt it.
         $quoteItemIds = array_map(function (Quote\Item $quoteItem) {
             return (string) $quoteItem->getId();
         }, $quote->getAllItems());
@@ -98,16 +98,9 @@ class QuoteToFulfillmentResponse
      */
     public function getMethods(Address $shippingAddress, array $quoteItemIds, ?array $submittedMethod = null): array
     {
-        $shippingRates = $shippingAddress->getAllShippingRates();
-
-        $shippingRates = array_filter($shippingRates, function (Rate $shippingMethod) {
-            return !$shippingMethod->getErrorMessage();
-        });
-
-        if (empty($shippingRates)) {
-            return [];
-        }
-
+        // Reported even with nothing to offer yet: an agent that submitted a method with no destination
+        // has to see it come back, or it cannot tell whether the store understood the request.
+        $shippingOptions = $this->shippingOptionResolver->resolve($shippingAddress->getQuote());
         $submittedGroup = $this->firstOf($submittedMethod, 'groups');
 
         /** @var FulfillmentMethodResponseInterface $method */
@@ -118,28 +111,38 @@ class QuoteToFulfillmentResponse
         );
         $method->setLineItemIds($quoteItemIds);
 
-        $destination = $this->convertAddressToDestination($shippingAddress);
+        // The destination keeps the identifier the agent gave it, so the selection below names something
+        // the response actually lists. Renaming it to the quote address id left the reference dangling.
+        $submittedDestination = $this->firstOf($submittedMethod, 'destinations');
+        $destination = $this->convertAddressToDestination(
+            $shippingAddress,
+            $this->submittedString($submittedDestination, 'id')
+        );
+
         if ($destination) {
             $method->setDestinations([$destination]);
-            $method->setSelectedDestinationId(
-                $this->submittedString($submittedMethod, 'selected_destination_id') ?? $destination->getId()
-            );
+            $method->setSelectedDestinationId($destination->getId());
         }
 
         $group = $this->fulfillmentGroupResponseFactory->create();
         $group->setId($this->submittedString($submittedGroup, 'id') ?? self::DEFAULT_GROUP_ID);
         $group->setLineItemIds($quoteItemIds);
 
-        $currencyCode = $shippingAddress->getQuote()->getCurrency()?->getStoreCurrencyCode() ?? 'USD';
-        $options = $this->convertShippingRatesToOptions($shippingRates, $currencyCode);
+        $options = $this->convertOptions($shippingOptions);
         if (!empty($options)) {
             $group->setOptions(array_values($options));
 
-            $selectedOptionId = $this->submittedString($submittedGroup, 'selected_option_id')
-                ?? $shippingAddress->getShippingMethod();
+            // Only a selection that names one of the options above is reported. Echoing back an id the
+            // store does not offer leaves a dangling reference, and tells the agent a shipping method is
+            // chosen when the order has none.
+            $selectedOptionId = $this->firstOfferedOption(
+                $options,
+                $this->submittedString($submittedGroup, 'selected_option_id'),
+                $shippingAddress->getShippingMethod()
+            );
 
-            if ($selectedOptionId) {
-                $group->setSelectedOptionId((string)$selectedOptionId);
+            if ($selectedOptionId !== null) {
+                $group->setSelectedOptionId($selectedOptionId);
             }
         }
 
@@ -180,10 +183,13 @@ class QuoteToFulfillmentResponse
 
     /**
      * @param Address $address
+     * @param string|null $submittedId Identifier the agent gave this destination, when it named one
      * @return FulfillmentDestinationResponseInterface|null
      */
-    private function convertAddressToDestination(Address $address): ?FulfillmentDestinationResponseInterface
-    {
+    private function convertAddressToDestination(
+        Address $address,
+        ?string $submittedId = null
+    ): ?FulfillmentDestinationResponseInterface {
         if (!$address->getCountryId()) {
             return null;
         }
@@ -193,7 +199,7 @@ class QuoteToFulfillmentResponse
 
         /** @var FulfillmentDestinationResponseInterface $destination */
         $destination = $this->fulfillmentDestinationResponseFactory->create();
-        $destination->setId((string) $address->getId());
+        $destination->setId($submittedId ?? (string) $address->getId());
 
         if ($streetAddress) {
             $destination->setStreetAddress($streetAddress);
@@ -225,30 +231,90 @@ class QuoteToFulfillmentResponse
     }
 
     /**
-     * @param Rate[] $shippingRates
-     * @param string $currencyCode
+     * @param FulfillmentOptionResponseInterface[] $options Options the response lists
+     * @param string|null ...$candidates Selections to try, best first
+     * @return string|null The first candidate the store actually offers
+     */
+    private function firstOfferedOption(array $options, ?string ...$candidates): ?string
+    {
+        $offered = [];
+
+        foreach ($options as $option) {
+            $offered[] = (string) $option->getId();
+        }
+
+        foreach ($candidates as $candidate) {
+            if ($candidate !== null && $candidate !== '' && in_array($candidate, $offered, true)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * A breakdown that adds up: the shipping charge, its tax where there is any, and the total the
+     * option adds to the order. A consumer reading only the total still gets the full cost.
+     *
+     * @param ShippingOption[] $shippingOptions
      * @return FulfillmentOptionResponseInterface[]
      */
-    private function convertShippingRatesToOptions(array $shippingRates, string $currencyCode): array
+    private function convertOptions(array $shippingOptions): array
     {
-        return array_map(function (Rate $rate) use ($currencyCode) {
+        return array_map(function (ShippingOption $shippingOption) {
             /** @var FulfillmentOptionResponseInterface $option */
             $option = $this->fulfillmentOptionResponseFactory->create();
-            $option->setId($rate->getCarrier() . '_' . $rate->getMethod());
-            $option->setTitle($rate->getMethodTitle() ?: $rate->getCarrierTitle());
-            $option->setDescription($rate->getMethodTitle() ? $rate->getCarrierTitle() : null);
-            $option->setCarrier($rate->getCarrierTitle());
-
-            // Create totals for the option
-            $price = (float) $rate->getPrice();
-            $total = $this->totalResponseFactory->create();
-            $total->setType(TotalResponseInterface::TYPE_FULFILLMENT);
-            $total->setAmount($this->priceConverter->convert($price, $currencyCode));
-            $total->setDisplayText($rate->getMethodTitle() ?: $rate->getCarrierTitle());
-
-            $option->setTotals([$total]);
+            $option->setId($shippingOption->id);
+            $option->setTitle($shippingOption->title);
+            $option->setDescription($shippingOption->description);
+            $option->setCarrier($shippingOption->carrier);
+            $option->setTotals($this->optionTotals($shippingOption));
 
             return $option;
-        }, $shippingRates);
+        }, $shippingOptions);
+    }
+
+    /**
+     * @param ShippingOption $shippingOption
+     * @return TotalResponseInterface[]
+     */
+    private function optionTotals(ShippingOption $shippingOption): array
+    {
+        $totals = [
+            $this->total(
+                TotalTypeInterface::TYPE_FULFILLMENT,
+                $shippingOption->title,
+                $shippingOption->amountExclTax
+            ),
+        ];
+
+        if ($shippingOption->taxAmount > 0) {
+            $totals[] = $this->total(TotalTypeInterface::TYPE_TAX, 'Tax', $shippingOption->taxAmount);
+        }
+
+        $totals[] = $this->total(
+            TotalTypeInterface::TYPE_TOTAL,
+            $shippingOption->title,
+            $shippingOption->amountInclTax
+        );
+
+        return $totals;
+    }
+
+    /**
+     * @param string $type
+     * @param string $displayText
+     * @param int $amount Minor units
+     * @return TotalResponseInterface
+     */
+    private function total(string $type, string $displayText, int $amount): TotalResponseInterface
+    {
+        /** @var TotalResponseInterface $total */
+        $total = $this->totalResponseFactory->create();
+        $total->setType($type);
+        $total->setAmount($amount);
+        $total->setDisplayText($displayText);
+
+        return $total;
     }
 }

@@ -18,14 +18,20 @@ use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentMethodCreateRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\ItemCreateRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\LineItemCreateRequestInterface;
+use Magebit\UcpSpec\Api\Shopping\DiscountResponseDiscountsObjectInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
+use Magebit\AgenticCore\Model\Buyer\BuyerWriter;
+use Magebit\AgenticCore\Model\Quote\AddressWriter;
+use Magebit\AgenticCore\Model\Quote\RegionResolver;
+use Magebit\AgenticCore\Model\Quote\LineItemOutcome;
+use Magebit\AgenticCore\Model\Quote\LineItemResult;
+use Magebit\AgenticCore\Model\Quote\LineItemWriter;
+use Magebit\AgenticCore\Model\Quote\PersonalInformationCopier;
+use Magebit\AgenticCore\Model\Quote\ShippingMethodWriter;
 use Magebit\UniversalCommerce\Model\Service\Shopping\AgentProfileParser;
 use Magebit\UniversalCommerce\Model\Service\Shopping\CheckoutDataProcessor;
-use Magento\Catalog\Api\ProductRepositoryInterface;
-use Magento\Catalog\Model\Product;
 use Magento\Framework\App\Request\Http;
-use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Quote\Api\GuestCouponManagementInterface;
 use Magento\Quote\Model\Quote;
 use Magento\Quote\Model\Quote\Address;
@@ -42,9 +48,29 @@ class CheckoutDataProcessorTest extends TestCase
     private array $createdMessages = [];
 
     /**
-     * @var ProductRepositoryInterface&MockObject
+     * @var LineItemWriter&MockObject
      */
-    private ProductRepositoryInterface $productRepository;
+    private LineItemWriter $lineItemWriter;
+
+    /**
+     * @var ShippingMethodWriter&MockObject
+     */
+    private ShippingMethodWriter $shippingMethodWriter;
+
+    /**
+     * @var AgentProfileParser&MockObject
+     */
+    private AgentProfileParser $agentProfileParser;
+
+    /**
+     * @var Http&MockObject
+     */
+    private Http $httpRequest;
+
+    /**
+     * @var GuestCouponManagementInterface&MockObject
+     */
+    private GuestCouponManagementInterface $couponManagement;
 
     /**
      * @var CheckoutDataProcessor
@@ -57,7 +83,8 @@ class CheckoutDataProcessorTest extends TestCase
     protected function setUp(): void
     {
         $this->createdMessages = [];
-        $this->productRepository = $this->createMock(ProductRepositoryInterface::class);
+        $this->lineItemWriter = $this->createMock(LineItemWriter::class);
+        $this->shippingMethodWriter = $this->createMock(ShippingMethodWriter::class);
 
         $messageFactory = $this->createMock(MessageInterfaceFactory::class);
         $messageFactory->method('create')->willReturnCallback(function (array $arguments) {
@@ -65,12 +92,20 @@ class CheckoutDataProcessorTest extends TestCase
             return $this->createMock(MessageInterface::class);
         });
 
+        $this->agentProfileParser = $this->createMock(AgentProfileParser::class);
+        $this->httpRequest = $this->createMock(Http::class);
+        $this->couponManagement = $this->createMock(GuestCouponManagementInterface::class);
+
         $this->processor = new CheckoutDataProcessor(
-            $this->productRepository,
-            $this->createMock(GuestCouponManagementInterface::class),
-            $this->createMock(AgentProfileParser::class),
-            $this->createMock(Http::class),
-            $messageFactory
+            $this->lineItemWriter,
+            new AddressWriter($this->createMock(RegionResolver::class)),
+            new PersonalInformationCopier(),
+            $this->shippingMethodWriter,
+            $this->couponManagement,
+            $this->agentProfileParser,
+            $this->httpRequest,
+            $messageFactory,
+            new BuyerWriter()
         );
     }
 
@@ -244,16 +279,19 @@ class CheckoutDataProcessorTest extends TestCase
     /**
      * @return void
      */
-    public function testProcessLineItemsLoadsProductsInTheQuoteStoreScope(): void
+    public function testProcessLineItemsHandsTheSubmittedSkusToTheSharedWriter(): void
     {
         $quote = $this->createQuote();
 
-        $this->productRepository->expects($this->once())
-            ->method('get')
-            ->with('24-MB04', false, self::STORE_ID)
-            ->willReturn($this->createSalableProduct());
+        $this->lineItemWriter->expects($this->once())
+            ->method('write')
+            ->with($quote, [['sku' => '24-MB04', 'quantity' => 1], ['sku' => 'OTHER', 'quantity' => 4]])
+            ->willReturn([]);
 
-        $this->processor->processLineItems($quote, [$this->createLineItem('24-MB04', 1)]);
+        $this->processor->processLineItems(
+            $quote,
+            [$this->createLineItem('24-MB04', 1), $this->createLineItem('OTHER', 4)]
+        );
     }
 
     /**
@@ -262,15 +300,13 @@ class CheckoutDataProcessorTest extends TestCase
     public function testProcessLineItemsReportsAnUnknownSkuInsteadOfThrowing(): void
     {
         $quote = $this->createQuote();
-        $quote->expects($this->never())->method('addProduct');
-
-        $this->productRepository->method('get')->willThrowException(new NoSuchEntityException());
+        $this->writerReturns([new LineItemResult(0, 'NO-SUCH-SKU', LineItemOutcome::NotFound)]);
 
         $this->processor->processLineItems($quote, [$this->createLineItem('NO-SUCH-SKU', 1)]);
 
         $this->assertCount(1, $this->createdMessages);
         $this->assertSame('error', $this->createdMessages[0]['type']);
-        $this->assertSame(CheckoutDataProcessor::CODE_INVALID, $this->createdMessages[0]['code']);
+        $this->assertSame(CheckoutDataProcessor::CODE_NOT_FOUND, $this->createdMessages[0]['code']);
         $this->assertSame('$.line_items[0].item.id', $this->createdMessages[0]['path']);
         $this->assertSame(MessageInterface::SEVERITY_RECOVERABLE, $this->createdMessages[0]['severity']);
         $this->assertStringContainsString('NO-SUCH-SKU', $this->createdMessages[0]['content']);
@@ -282,11 +318,7 @@ class CheckoutDataProcessorTest extends TestCase
     public function testProcessLineItemsReportsAnUnsalableProduct(): void
     {
         $quote = $this->createQuote();
-        $quote->expects($this->never())->method('addProduct');
-
-        $product = $this->createMock(Product::class);
-        $product->method('isSalable')->willReturn(false);
-        $this->productRepository->method('get')->willReturn($product);
+        $this->writerReturns([new LineItemResult(0, 'OOS-SKU', LineItemOutcome::NotSalable)]);
 
         $this->processor->processLineItems($quote, [$this->createLineItem('OOS-SKU', 1)]);
 
@@ -295,23 +327,71 @@ class CheckoutDataProcessorTest extends TestCase
     }
 
     /**
-     * One bad SKU must not cost the caller the rest of the cart.
+     * A refusal carries the framework's own explanation rather than a generic message.
+     *
+     * @return void
+     */
+    public function testProcessLineItemsReportsARefusalWithItsReason(): void
+    {
+        $quote = $this->createQuote();
+        $this->writerReturns([
+            new LineItemResult(0, '24-MB04', LineItemOutcome::Rejected, 'Requested qty is not available'),
+        ]);
+
+        $this->processor->processLineItems($quote, [$this->createLineItem('24-MB04', 99)]);
+
+        $this->assertCount(1, $this->createdMessages);
+        $this->assertSame(CheckoutDataProcessor::CODE_INVALID, $this->createdMessages[0]['code']);
+        $this->assertSame('Requested qty is not available', $this->createdMessages[0]['content']);
+    }
+
+    /**
+     * @return void
+     */
+    public function testProcessLineItemsReportsAQuantityTheStoreCannotSupplyAsOutOfStock(): void
+    {
+        $quote = $this->createQuote();
+        $this->writerReturns([
+            new LineItemResult(0, '24-MB04', LineItemOutcome::InsufficientStock, 'Only 3 left'),
+        ]);
+
+        $this->processor->processLineItems($quote, [$this->createLineItem('24-MB04', 99)]);
+
+        $this->assertCount(1, $this->createdMessages);
+        $this->assertSame(CheckoutDataProcessor::CODE_OUT_OF_STOCK, $this->createdMessages[0]['code']);
+        $this->assertSame('Only 3 left', $this->createdMessages[0]['content']);
+    }
+
+    /**
+     * @return void
+     */
+    public function testProcessLineItemsReportsAQuantityTheStoreWillNotSellInAsInvalid(): void
+    {
+        $quote = $this->createQuote();
+        $this->writerReturns([
+            new LineItemResult(0, '24-MB04', LineItemOutcome::InvalidQuantity, 'The fewest you may purchase is 5.'),
+        ]);
+
+        $this->processor->processLineItems($quote, [$this->createLineItem('24-MB04', 1)]);
+
+        $this->assertCount(1, $this->createdMessages);
+        $this->assertSame(CheckoutDataProcessor::CODE_INVALID, $this->createdMessages[0]['code']);
+        $this->assertSame('The fewest you may purchase is 5.', $this->createdMessages[0]['content']);
+    }
+
+    /**
+     * One bad SKU must not cost the caller the rest of the cart: the added item raises no message, and
+     * the failed one is reported at its own index.
      *
      * @return void
      */
     public function testProcessLineItemsKeepsAddingTheRemainingItems(): void
     {
         $quote = $this->createQuote();
-        $quote->expects($this->once())->method('addProduct');
-
-        $this->productRepository->method('get')->willReturnCallback(
-            function (string $sku) {
-                if ($sku === 'NO-SUCH-SKU') {
-                    throw new NoSuchEntityException();
-                }
-                return $this->createSalableProduct();
-            }
-        );
+        $this->writerReturns([
+            new LineItemResult(0, 'NO-SUCH-SKU', LineItemOutcome::NotFound),
+            new LineItemResult(1, '24-MB04', LineItemOutcome::Added),
+        ]);
 
         $this->processor->processLineItems(
             $quote,
@@ -323,12 +403,47 @@ class CheckoutDataProcessorTest extends TestCase
     }
 
     /**
+     * The URL was parsed out of the agent's profile and then dropped, so nothing was ever sent order
+     * events. It is persisted with the checkout because the header is only on the agent's own requests.
+     *
+     * @return void
+     */
+    public function testTheAgentsWebhookUrlIsReadFromItsProfile(): void
+    {
+        $this->httpRequest->method('getHeader')->willReturn('profile="https://agent.test/.well-known/ucp"');
+
+        $this->agentProfileParser->method('parseWebhookUrl')->willReturn('https://agent.test/hooks/orders');
+
+        $this->assertSame('https://agent.test/hooks/orders', $this->processor->getAgentWebhookUrl());
+    }
+
+    /**
+     * @return void
+     */
+    public function testNoAgentHeaderMeansNoWebhookUrl(): void
+    {
+        $this->httpRequest->method('getHeader')->willReturn(false);
+        $this->agentProfileParser->expects($this->never())->method('parseWebhookUrl');
+
+        $this->assertNull($this->processor->getAgentWebhookUrl());
+    }
+
+    /**
+     * @param LineItemResult[] $results
+     * @return void
+     */
+    private function writerReturns(array $results): void
+    {
+        $this->lineItemWriter->method('write')->willReturn($results);
+    }
+
+    /**
      * @return void
      */
     public function testValidateHandsTheCollectedMessagesToTheResponseBuilder(): void
     {
         $quote = $this->createQuote();
-        $this->productRepository->method('get')->willThrowException(new NoSuchEntityException());
+        $this->writerReturns([new LineItemResult(0, 'NO-SUCH-SKU', LineItemOutcome::NotFound)]);
 
         $this->assertNull($this->processor->validate($quote));
 
@@ -381,9 +496,106 @@ class CheckoutDataProcessorTest extends TestCase
                 'getLastname',
                 'getTelephone',
                 'getEmail',
+                'getStreet',
+                'getStreetLine',
+                'getCity',
+                'getPostcode',
+                'getRegionId',
             ])
             ->addMethods(['setCollectShippingRates'])
             ->getMock();
+    }
+
+    /**
+     * A store bills where it ships unless the agent named a billing address of its own.
+     *
+     * @return void
+     */
+    public function testTheBillingAddressFallsBackToTheShippingOne(): void
+    {
+        $shipping = $this->createAddress();
+        $shipping->method('getStreet')->willReturn(['1 Main St']);
+        $shipping->method('getCity')->willReturn('Austin');
+        $shipping->method('getCountryId')->willReturn('US');
+        $shipping->method('getPostcode')->willReturn('78701');
+
+        $billing = $this->createAddress();
+        $billing->method('getStreetLine')->willReturn('');
+        $billing->expects($this->once())->method('setStreet')->with(['1 Main St']);
+        $billing->expects($this->once())->method('setCity')->with('Austin');
+        $billing->expects($this->once())->method('setCountryId')->with('US');
+        $billing->expects($this->once())->method('setPostcode')->with('78701');
+
+        $this->processor->fillBillingFromShipping($this->createQuote($shipping, $billing));
+    }
+
+    /**
+     * @return void
+     */
+    public function testABillingAddressTheAgentGaveIsLeftAlone(): void
+    {
+        $billing = $this->createAddress();
+        $billing->method('getStreetLine')->willReturn('9 Billing Road');
+        $billing->expects($this->never())->method('setStreet');
+
+        $this->processor->fillBillingFromShipping($this->createQuote(null, $billing));
+    }
+
+    /**
+     * Magento carries one coupon per cart, so an agent that sent two has to be told which one counted.
+     *
+     * @return void
+     */
+    public function testASecondDiscountCodeIsReportedRatherThanDropped(): void
+    {
+        $quote = $this->createQuote();
+        $this->couponManagement->expects($this->once())->method('set')->with('cart-1', '10OFF');
+
+        $this->processor->processDiscountInformation('cart-1', $quote, $this->discounts(['10OFF', 'WELCOME20']));
+
+        $this->assertCount(1, $this->createdMessages);
+        $this->assertSame(CheckoutDataProcessor::CODE_NOT_APPLIED, $this->createdMessages[0]['code']);
+        $this->assertSame('$.discounts.codes[1]', $this->createdMessages[0]['path']);
+        $this->assertStringContainsString('WELCOME20', $this->createdMessages[0]['content']);
+    }
+
+    /**
+     * @return void
+     */
+    public function testASingleDiscountCodeIsAppliedWithNothingToReport(): void
+    {
+        $quote = $this->createQuote();
+        $this->couponManagement->expects($this->once())->method('set')->with('cart-1', '10OFF');
+
+        $this->processor->processDiscountInformation('cart-1', $quote, $this->discounts(['10OFF']));
+
+        $this->assertSame([], $this->createdMessages);
+    }
+
+    /**
+     * @return void
+     */
+    public function testNoCodesAtAllClearsTheCoupon(): void
+    {
+        $quote = $this->createQuote();
+        $this->couponManagement->expects($this->once())->method('remove')->with('cart-1');
+        $this->couponManagement->expects($this->never())->method('set');
+
+        $this->processor->processDiscountInformation('cart-1', $quote, $this->discounts([]));
+
+        $this->assertSame([], $this->createdMessages);
+    }
+
+    /**
+     * @param string[] $codes
+     * @return DiscountResponseDiscountsObjectInterface&MockObject
+     */
+    private function discounts(array $codes): DiscountResponseDiscountsObjectInterface
+    {
+        $discounts = $this->createMock(DiscountResponseDiscountsObjectInterface::class);
+        $discounts->method('getCodes')->willReturn($codes);
+
+        return $discounts;
     }
 
     /**
@@ -395,7 +607,15 @@ class CheckoutDataProcessorTest extends TestCase
     {
         $quote = $this->getMockBuilder(Quote::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['getShippingAddress', 'getBillingAddress', 'getStoreId', 'removeAllItems', 'addProduct'])
+            ->onlyMethods([
+                'getShippingAddress',
+                'getBillingAddress',
+                'getStoreId',
+                'removeAllItems',
+                'addProduct',
+                'collectTotals',
+                'getIsVirtual',
+            ])
             ->getMock();
 
         $quote->method('getShippingAddress')->willReturn($shippingAddress ?? $this->createAddress());
@@ -485,16 +705,5 @@ class CheckoutDataProcessorTest extends TestCase
         $lineItem->method('getQuantity')->willReturn($quantity);
 
         return $lineItem;
-    }
-
-    /**
-     * @return Product&MockObject
-     */
-    private function createSalableProduct(): Product
-    {
-        $product = $this->createMock(Product::class);
-        $product->method('isSalable')->willReturn(true);
-
-        return $product;
     }
 }

@@ -2,10 +2,6 @@
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
 
-    <!-- Idempotency Key -->
-    <preference for="Magebit\UniversalCommerce\Api\Data\IdempotencyKeyInterface" type="Magebit\UniversalCommerce\Model\IdempotencyKey\Model" />
-    <preference for="Magebit\UniversalCommerce\Api\IdempotencyKeyRepositoryInterface" type="Magebit\UniversalCommerce\Model\IdempotencyKey\Repository" />
-
     <!-- Checkout Meta -->
     <preference for="Magebit\UniversalCommerce\Api\Data\CheckoutMetaInterface" type="Magebit\UniversalCommerce\Model\CheckoutMeta\Model" />
     <preference for="Magebit\UniversalCommerce\Api\CheckoutMetaRepositoryInterface" type="Magebit\UniversalCommerce\Model\CheckoutMeta\Repository" />
@@ -19,36 +15,67 @@
         </arguments>
     </type>
 
+    <!-- How an order placed through this protocol reads in admin. The base holds the badge; the label
+         is ours, because the base may not name a protocol. -->
+    <type name="Magebit\AgenticCore\Block\Adminhtml\Order\View\PlacedBy">
+        <arguments>
+            <argument name="labels" xsi:type="array">
+                <item name="ucp" xsi:type="string">Placed by an agent over UCP</item>
+            </argument>
+        </arguments>
+    </type>
+
     <!-- Shopping service -->
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\RestHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\RestHandler" />
     <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\QuoteValidatorInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\Validation\QuoteValidationComposite" />
+    <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\OrderHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\OrderHandler" />
+    <preference for="Magebit\UniversalCommerce\Api\OrderAdjustmentRepositoryInterface" type="Magebit\UniversalCommerce\Model\OrderAdjustment\Repository" />
+    <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\CartHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\CartHandler" />
+    <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\CatalogHandlerInterface" type="Magebit\UniversalCommerce\Model\Service\Shopping\CatalogHandler" />
 
     <type name="Magebit\UniversalCommerce\Model\Service\Shopping\ShoppingService">
         <arguments>
             <argument name="capabilities" xsi:type="array">
+                <item name="dev.ucp.shopping.cart" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CartCapability</item>
+                <item name="dev.ucp.shopping.catalog.lookup" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CatalogLookupCapability</item>
+                <item name="dev.ucp.shopping.catalog.search" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CatalogSearchCapability</item>
+                <item name="dev.ucp.shopping.buyer_consent" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\BuyerConsentCapability</item>
                 <item name="dev.ucp.shopping.checkout" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\CheckoutCapability</item>
                 <item name="dev.ucp.shopping.discount" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\DiscountCapability</item>
+                <item name="dev.ucp.shopping.fulfillment" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\FulfillmentCapability</item>
+                <item name="dev.ucp.shopping.order" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Capability\OrderCapability</item>
             </argument>
         </arguments>
     </type>
     <type name="Magebit\UniversalCommerce\Model\Service\Shopping\Converter\QuoteToTotalsResponse">
         <arguments>
             <argument name="typeMapping" xsi:type="array">
-                <item name="subtotal" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_SUBTOTAL</item>
-                <item name="discount" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_DISCOUNT</item>
-                <item name="items_discount" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_ITEMS_DISCOUNT</item>
-                <item name="shipping_discount" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_DISCOUNT</item>
-                <item name="fee" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_FEE</item>
-                <item name="shipping" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_FULFILLMENT</item>
-                <item name="tax" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_TAX</item>
-                <item name="grand_total" xsi:type="const">\Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface::TYPE_TOTAL</item>
+                <item name="subtotal" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_SUBTOTAL</item>
+                <item name="discount" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_DISCOUNT</item>
+                <item name="items_discount" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_ITEMS_DISCOUNT</item>
+                <item name="shipping_discount" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_DISCOUNT</item>
+                <item name="fee" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_FEE</item>
+                <item name="shipping" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_FULFILLMENT</item>
+                <item name="tax" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_TAX</item>
+                <item name="grand_total" xsi:type="const">\Magebit\UniversalCommerce\Api\Data\TotalTypeInterface::TYPE_TOTAL</item>
             </argument>
         </arguments>
     </type>
+    <!-- Extensions the specification defines for this service but the store does not implement. A
+         request that carries one is answered with a warning rather than having it dropped in silence. -->
+    <type name="Magebit\UniversalCommerce\Model\Protocol\UndeclaredExtensions">
+        <arguments>
+            <argument name="extensions" xsi:type="array">
+                <item name="ap2" xsi:type="string">dev.ucp.shopping.ap2_mandate</item>
+            </argument>
+        </arguments>
+    </type>
+
     <type name="Magebit\UniversalCommerce\Model\Service\Shopping\Validation\QuoteValidationComposite">
         <arguments>
             <argument name="validators" xsi:type="array">
                 <item name="quote_address_validator" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Validation\QuoteAddressValidator</item>
+                <item name="quote_fulfillment_validator" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\Validation\QuoteFulfillmentValidator</item>
                 <item name="checkout_data_processor" xsi:type="object">Magebit\UniversalCommerce\Model\Service\Shopping\CheckoutDataProcessor</item>
             </argument>
         </arguments>
@@ -57,12 +84,68 @@
     <!-- Specification implementations -->
     <!-- Discovery -->
     <preference for="Magebit\UcpSpec\Api\Discovery\ProfileSchemaInterface" type="Magebit\UcpSpec\Data\Discovery\ProfileSchema" />
+    <preference for="Magebit\UcpSpec\Api\Discovery\ProfileSchemaSigningKeyInterface" type="Magebit\UcpSpec\Data\Discovery\ProfileSchemaSigningKey" />
 
     <!-- Schemas -->
     <preference for="Magebit\UcpSpec\Api\UcpBusinessSchemaInterface" type="Magebit\UcpSpec\Data\UcpBusinessSchema" />
     <preference for="Magebit\UcpSpec\Api\CapabilityBusinessSchemaInterface" type="Magebit\UcpSpec\Data\CapabilityBusinessSchema" />
     <preference for="Magebit\UcpSpec\Api\CapabilityResponseSchemaInterface" type="Magebit\UcpSpec\Data\CapabilityResponseSchema" />
     <preference for="Magebit\UcpSpec\Api\UcpResponseCheckoutSchemaInterface" type="Magebit\UcpSpec\Data\UcpResponseCheckoutSchema" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\CartResponseInterface" type="Magebit\UcpSpec\Data\Shopping\CartResponse" />
+    <preference for="Magebit\UcpSpec\Api\UcpResponseCartSchemaInterface" type="Magebit\UcpSpec\Data\UcpResponseCartSchema" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\MessageInfoInterface" type="Magebit\UcpSpec\Data\Shopping\Types\MessageInfo" />
+    <!-- Carries the agent's own webhook URL. Unbound until the profile parser gained a caller, because
+         nothing had ever built one. -->
+    <preference for="Magebit\UcpSpec\Api\Shopping\OrderResponsePlatformSchemaInterface" type="Magebit\UcpSpec\Data\Shopping\OrderResponsePlatformSchema" />
+    <preference for="Magebit\UcpSpec\Api\UcpResponseOrderSchemaInterface" type="Magebit\UcpSpec\Data\UcpResponseOrderSchema" />
+
+    <!-- Shopping - Order -->
+    <preference for="Magebit\UcpSpec\Api\Shopping\OrderResponseInterface" type="Magebit\UcpSpec\Data\Shopping\OrderResponse" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\OrderResponseFulfillmentInterface" type="Magebit\UcpSpec\Data\Shopping\OrderResponseFulfillment" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\OrderLineItemInterface" type="Magebit\UcpSpec\Data\Shopping\Types\OrderLineItem" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\OrderLineItemQuantityInterface" type="Magebit\UcpSpec\Data\Shopping\Types\OrderLineItemQuantity" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\ExpectationInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Expectation" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\ExpectationLineItemsItemInterface" type="Magebit\UcpSpec\Data\Shopping\Types\ExpectationLineItemsItem" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\FulfillmentEventInterface" type="Magebit\UcpSpec\Data\Shopping\Types\FulfillmentEvent" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\FulfillmentEventLineItemsItemInterface" type="Magebit\UcpSpec\Data\Shopping\Types\FulfillmentEventLineItemsItem" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\AdjustmentInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Adjustment" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\AdjustmentLineItemsItemInterface" type="Magebit\UcpSpec\Data\Shopping\Types\AdjustmentLineItemsItem" />
+
+    <!-- Shopping - Catalog -->
+    <preference for="Magebit\UcpSpec\Api\Shopping\CatalogSearchSearchResponseInterface" type="Magebit\UcpSpec\Data\Shopping\CatalogSearchSearchResponse" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\CatalogLookupLookupResponseInterface" type="Magebit\UcpSpec\Data\Shopping\CatalogLookupLookupResponse" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\CatalogLookupGetProductResponseInterface" type="Magebit\UcpSpec\Data\Shopping\CatalogLookupGetProductResponse" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\CatalogLookupDetailProductInterface" type="Magebit\UcpSpec\Data\Shopping\CatalogLookupDetailProduct" />
+    <preference for="Magebit\UcpSpec\Api\UcpResponseCatalogSchemaInterface" type="Magebit\UcpSpec\Data\UcpResponseCatalogSchema" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\PaginationResponseInterface" type="Magebit\UcpSpec\Data\Shopping\Types\PaginationResponse" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\ProductInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Product" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\VariantInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Variant" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\VariantAvailabilityInterface" type="Magebit\UcpSpec\Data\Shopping\Types\VariantAvailability" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\PriceInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Price" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\PriceRangeInterface" type="Magebit\UcpSpec\Data\Shopping\Types\PriceRange" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\DescriptionInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Description" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\MediaInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Media" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\InputCorrelationInterface" type="Magebit\UcpSpec\Data\Shopping\Types\InputCorrelation" />
+
+    <!-- The shared delivery queue, bound to this protocol's headers. A virtual type rather than a
+         preference because the other module delivers with an entirely different header set. -->
+    <virtualType name="Magebit\UniversalCommerce\Model\Webhook\Dispatcher" type="Magebit\AgenticCore\Model\Webhook\Dispatcher">
+        <arguments>
+            <argument name="headersProvider" xsi:type="object">Magebit\UniversalCommerce\Model\Webhook\DeliveryHeadersProvider</argument>
+        </arguments>
+    </virtualType>
+
+    <type name="Magebit\UniversalCommerce\Cron\DispatchWebhooks">
+        <arguments>
+            <argument name="dispatcher" xsi:type="object">Magebit\UniversalCommerce\Model\Webhook\Dispatcher</argument>
+        </arguments>
+    </type>
+
+    <type name="Magebit\UniversalCommerce\Model\Webhook\OrderEventNotifier">
+        <arguments>
+            <argument name="dispatcher" xsi:type="object">Magebit\UniversalCommerce\Model\Webhook\Dispatcher</argument>
+        </arguments>
+    </type>
 
     <!-- Services -->
     <preference for="Magebit\UcpSpec\Api\ServiceBusinessSchemaInterface" type="Magebit\UcpSpec\Data\ServiceBusinessSchema" />
@@ -79,7 +162,9 @@
     <preference for="Magebit\UcpSpec\Api\Shopping\PaymentInterface" type="Magebit\UcpSpec\Data\Shopping\Payment" />
 
     <!-- Shopping - Types -->
-    <preference for="Magebit\UcpSpec\Api\Shopping\Types\BuyerInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Buyer" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\BuyerInterface" type="Magebit\UniversalCommerce\Model\Spec\Schemas\Shopping\BuyerWithConsent" />
+    <preference for="Magebit\UniversalCommerce\Api\Service\Shopping\BuyerWithConsentInterface" type="Magebit\UniversalCommerce\Model\Spec\Schemas\Shopping\BuyerWithConsent" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\BuyerConsentResponseConsentInterface" type="Magebit\UcpSpec\Data\Shopping\BuyerConsentResponseConsent" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\ItemCreateRequestInterface" type="Magebit\UcpSpec\Data\Shopping\Types\ItemCreateRequest" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\ItemUpdateRequestInterface" type="Magebit\UcpSpec\Data\Shopping\Types\ItemUpdateRequest" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\LineItemCreateRequestInterface" type="Magebit\UcpSpec\Data\Shopping\Types\LineItemCreateRequest" />
@@ -92,6 +177,9 @@
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\MessageInterface" type="Magebit\UcpSpec\Data\Shopping\Types\Message" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\MessageErrorInterface" type="Magebit\UcpSpec\Data\Shopping\Types\MessageError" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\OrderConfirmationInterface" type="Magebit\UcpSpec\Data\Shopping\Types\OrderConfirmation" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\OrderUpdateRequestInterface" type="Magebit\UcpSpec\Data\Shopping\OrderUpdateRequest" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\OrderUpdateRequestFulfillmentInterface" type="Magebit\UcpSpec\Data\Shopping\OrderUpdateRequestFulfillment" />
+    <preference for="Magebit\UcpSpec\Api\Shopping\Types\TotalUpdateRequestInterface" type="Magebit\UcpSpec\Data\Shopping\Types\TotalUpdateRequest" />
     <preference for="Magebit\UcpSpec\Api\PaymentHandlerResponseSchemaInterface" type="Magebit\UcpSpec\Data\PaymentHandlerResponseSchema" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface" type="Magebit\UcpSpec\Data\Shopping\Types\TotalResponse" />
     <preference for="Magebit\UcpSpec\Api\Shopping\Types\FulfillmentRequestInterface" type="Magebit\UcpSpec\Data\Shopping\Types\FulfillmentRequest" />
@@ -110,4 +198,23 @@
     <preference for="Magebit\UcpSpec\Api\Shopping\DiscountResponseDiscountsObjectInterface" type="Magebit\UcpSpec\Data\Shopping\DiscountResponseDiscountsObject" />
     <preference for="Magebit\UcpSpec\Api\Shopping\DiscountResponseAppliedDiscountInterface" type="Magebit\UcpSpec\Data\Shopping\DiscountResponseAppliedDiscount" />
     <preference for="Magebit\UcpSpec\Api\Shopping\DiscountResponseAllocationInterface" type="Magebit\UcpSpec\Data\Shopping\DiscountResponseAllocation" />
+    <type name="Magento\Framework\Console\CommandList">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="SeedUcpConformance" xsi:type="object">Magebit\UniversalCommerce\Console\Command\SeedConformance</item>
+                <item name="DispatchUcpWebhooks" xsi:type="object">Magebit\UniversalCommerce\Console\Command\DispatchWebhooks</item>
+            </argument>
+        </arguments>
+    </type>
+    <type name="Magebit\UniversalCommerce\Cron\DispatchWebhooks">
+        <arguments>
+            <argument name="dueDeliveries" xsi:type="object">Magebit\UniversalCommerce\Model\Webhook\DueDeliveries</argument>
+        </arguments>
+    </type>
+    <virtualType name="Magebit\UniversalCommerce\Model\Webhook\DueDeliveries" type="Magebit\AgenticCore\Model\Webhook\DueDeliveries">
+        <arguments>
+            <argument name="dispatcher" xsi:type="object">Magebit\UniversalCommerce\Model\Webhook\Dispatcher</argument>
+            <argument name="scope" xsi:type="string">ucp</argument>
+        </arguments>
+    </virtualType>
 </config>

@@ -14,12 +14,16 @@ namespace Magebit\UniversalCommerce\Test\Unit\Controller;
 
 use Magebit\UcpSpec\Api\Shopping\Types\MessageErrorInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageErrorInterfaceFactory;
+use Magebit\UcpSpec\Api\UcpErrorInterface;
 use Magebit\UcpSpec\Data\Shopping\Types\MessageError;
+use Magebit\UniversalCommerce\Api\UniversalCommerceProtocolInterface;
 use Magebit\UniversalCommerce\Controller\ApiController;
+use Magebit\UniversalCommerce\Test\Unit\SchemaAssert;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
-use Magebit\UniversalCommerce\Model\RequestClassBuilder;
-use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
+use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
+use Magebit\AgenticCore\Model\Request\Hydrator;
+use Magebit\AgenticCore\Model\Validation\RequestValidator;
 use Magento\Framework\App\Request\Http;
 use Magento\Framework\Controller\Result\Json as ResultJson;
 use Magento\Framework\Controller\Result\JsonFactory;
@@ -28,6 +32,8 @@ use Psr\Log\LoggerInterface;
 
 class ApiControllerTest extends TestCase
 {
+    use SchemaAssert;
+
     private const UUID = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
 
     /**
@@ -93,6 +99,44 @@ class ApiControllerTest extends TestCase
     }
 
     /**
+     * The envelope is `types/error_response.json`, which 2026-04-08 introduced and which forbids
+     * additional properties — so the invented top-level `status` this module used to send is now a
+     * violation rather than a harmless extra.
+     *
+     * @return void
+     */
+    public function testTheErrorEnvelopeMatchesTheSpecSchema(): void
+    {
+        $result = $this->controller(null)->errorBoundary(fn (): ResultJson => $this->fail('reached'));
+
+        $this->assertMatchesSchema($this->encoded($result), 'shopping/types/error_response.json');
+    }
+
+    /**
+     * @return void
+     */
+    public function testTheEnvelopeReportsErrorStatusInsideUcpMetadata(): void
+    {
+        $payload = $this->encoded($this->controller(null)->errorBoundary(fn (): ResultJson => $this->fail('reached')));
+
+        $this->assertFalse(property_exists($payload, 'status'));
+        $this->assertSame(UcpErrorInterface::STATUS_ERROR, $payload->ucp->status);
+        $this->assertSame(UniversalCommerceProtocolInterface::SPEC_VERSION, $payload->ucp->version);
+    }
+
+    /**
+     * @param ResultJson $result
+     * @return object The payload as an agent would receive it, so nothing hides behind PHP objects
+     */
+    private function encoded(ResultJson $result): object
+    {
+        /** @var object $decoded */
+        $decoded = json_decode((string) json_encode($result->getData()), false, 512, JSON_THROW_ON_ERROR);
+
+        return $decoded;
+    }
+
+    /**
      * @param ResultJson $result Response produced by the boundary
      * @return MessageErrorInterface
      */
@@ -113,7 +157,11 @@ class ApiControllerTest extends TestCase
     private function controller(?string $requestId, bool $required = true): ApiController
     {
         $request = $this->createMock(Http::class);
-        $request->method('getHeader')->willReturn($requestId ?? false);
+        $request->method('getHeader')->willReturnCallback(
+            static fn (string $name): string|false => $name === ApiController::HEADER_REQUEST_ID
+                ? ($requestId ?? false)
+                : false
+        );
 
         $config = $this->createMock(Config::class);
         $config->method('isRequestIdRequired')->willReturn($required);
@@ -128,11 +176,12 @@ class ApiControllerTest extends TestCase
             $jsonFactory,
             $request,
             $this->createMock(RequestValidator::class),
-            $this->createMock(RequestClassBuilder::class),
+            $this->createMock(Hydrator::class),
             $config,
             $messageFactory,
             $this->createMock(IdempotencyHandler::class),
-            $this->createMock(LoggerInterface::class)
+            $this->createMock(LoggerInterface::class),
+            new VersionNegotiator()
         ) extends ApiController {
             /**
              * @return ResultJson

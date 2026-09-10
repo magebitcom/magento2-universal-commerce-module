@@ -9,6 +9,9 @@
             <idempotency>
                 <ttl_hours>24</ttl_hours>
             </idempotency>
+            <webhooks>
+                <enabled>1</enabled>
+            </webhooks>
             <checkout>
                 <payment_method>checkmo</payment_method>
             </checkout>

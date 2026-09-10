@@ -15,6 +15,7 @@ use Magebit\UniversalCommerce\Api\Service\Shopping\RestHandlerInterface;
 use Magebit\UniversalCommerce\Api\Service\Shopping\CheckoutUpdateRequestInterface;
 use Magebit\UniversalCommerce\Api\Service\Shopping\CheckoutCreateRequestInterface;
 use Magebit\UniversalCommerce\Api\Service\Shopping\CheckoutResponseInterface;
+use Magebit\UcpSpec\Api\Shopping\BuyerConsentResponseConsentInterface;
 use Magebit\UcpSpec\Api\Shopping\PaymentInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentRequestInterface;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\QuoteToCheckoutResponse;
@@ -23,14 +24,24 @@ use Magento\Quote\Api\GuestCartManagementInterface;
 use Magento\Quote\Api\GuestCartRepositoryInterface;
 use Magento\Quote\Api\Data\CartInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
+use Magebit\UniversalCommerce\Exception\UcpMessagesException;
+use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
+use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
+use Magebit\UniversalCommerce\Api\Service\Shopping\QuoteValidatorInterface;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magebit\UniversalCommerce\Api\CheckoutMetaRepositoryInterface;
 use Magebit\UniversalCommerce\Api\Data\CheckoutMetaInterface;
 use Magebit\UniversalCommerce\Api\Data\CheckoutMetaInterfaceFactory;
+use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
 use Magebit\UniversalCommerce\Model\Config;
+use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\AgenticCore\Model\Order\Note;
+use Magebit\UniversalCommerce\Model\Webhook\OrderEventNotifier;
 use Magento\Quote\Model\Quote;
+use Magento\Sales\Api\OrderRepositoryInterface;
+use Magento\Sales\Model\Order;
 
 class RestHandler implements RestHandlerInterface
 {
@@ -43,6 +54,13 @@ class RestHandler implements RestHandlerInterface
      * @param CheckoutMetaRepositoryInterface $checkoutMetaRepository
      * @param CheckoutMetaInterfaceFactory $checkoutMetaFactory
      * @param Config $config
+     * @param OrderLinkRepositoryInterface $orderLinkRepository
+     * @param OrderRepositoryInterface $orderRepository
+     * @param OrderEventNotifier $orderEventNotifier
+     * @param Note $orderNote
+     * @param CheckoutGuard $checkoutGuard
+     * @param QuoteValidatorInterface $quoteValidator
+     * @param MessageInterfaceFactory $messageFactory
      */
     public function __construct(
         protected readonly CheckoutDataProcessor $checkoutDataProcessor,
@@ -52,7 +70,14 @@ class RestHandler implements RestHandlerInterface
         protected readonly CartRepositoryInterface $cartRepository,
         protected readonly CheckoutMetaRepositoryInterface $checkoutMetaRepository,
         protected readonly CheckoutMetaInterfaceFactory $checkoutMetaFactory,
-        protected readonly Config $config
+        protected readonly Config $config,
+        protected readonly OrderLinkRepositoryInterface $orderLinkRepository,
+        protected readonly OrderRepositoryInterface $orderRepository,
+        protected readonly OrderEventNotifier $orderEventNotifier,
+        protected readonly Note $orderNote,
+        protected readonly CheckoutGuard $checkoutGuard,
+        protected readonly QuoteValidatorInterface $quoteValidator,
+        protected readonly MessageInterfaceFactory $messageFactory
     ) {
     }
 
@@ -67,7 +92,12 @@ class RestHandler implements RestHandlerInterface
 
         $this->checkoutDataProcessor->processCreateCheckoutRequest($cart, $request, $maskedCartId);
         $this->cartRepository->save($cart);
-        $this->recordCheckoutMeta($maskedCartId, (int) $cart->getId(), $request->getFulfillment());
+        $this->recordCheckoutMeta(
+            $maskedCartId,
+            (int) $cart->getId(),
+            $request->getFulfillment(),
+            $request->getBuyer()?->getConsent()
+        );
 
         return $this->quoteToCheckoutResponse->convert($cart, $maskedCartId);
     }
@@ -92,10 +122,17 @@ class RestHandler implements RestHandlerInterface
     {
         $cart = $this->getCartByMaskedId($checkoutId);
 
+        if ($this->checkoutGuard->isCompleted($cart, $checkoutId)) {
+            throw new UcpException(
+                __('Checkout session %1 is already completed and can no longer be canceled.', $checkoutId),
+                CheckoutGuard::CODE_COMPLETED,
+                409
+            );
+        }
+
         if (!$cart->getIsActive()) {
             throw new UcpException(
                 __('Checkout session is already canceled: %1.', $checkoutId),
-                'error',
                 'checkout_already_canceled',
                 400
             );
@@ -115,9 +152,11 @@ class RestHandler implements RestHandlerInterface
     public function updateCheckout(string $checkoutId, CheckoutUpdateRequestInterface $request): CheckoutResponseInterface
     {
         $cart = $this->getCartByMaskedId($checkoutId);
+        $this->checkoutGuard->assertOpen($cart, $checkoutId);
         $this->checkoutDataProcessor->processUpdateCheckoutRequest($cart, $request, $checkoutId);
         $this->cartRepository->save($cart);
         $this->rememberSubmittedFulfillment($checkoutId, $request->getFulfillment());
+        $this->rememberBuyerConsent($checkoutId, $request->getBuyer()?->getConsent());
 
         return $this->quoteToCheckoutResponse->convert($cart, $checkoutId);
     }
@@ -151,12 +190,52 @@ class RestHandler implements RestHandlerInterface
         try {
             $orderId = (int) $this->guestCartManagement->placeOrder($checkoutId);
         } catch (LocalizedException $e) {
-            throw new LocalizedException(__('Failed to place order: %1', $e->getMessage()));
+            // A refused order is the agent's to fix, so it reports as a 4xx naming every blocker rather
+            // than as a server error with one Magento sentence the agent can do nothing with.
+            throw new UcpMessagesException(
+                __('The checkout session could not be completed: %1', $e->getMessage()),
+                $this->completionBlockers($cart, $e->getMessage()),
+                422
+            );
         }
 
         $this->linkOrder($checkoutId, $orderId);
 
+        // Notified here rather than from sales_order_place_after, which fires before the order is saved
+        // and before the link exists — leaving the notifier nothing to resolve the session from.
+        $placedOrder = $this->orderRepository->get($orderId);
+
+        if ($placedOrder instanceof Order) {
+            $this->orderNote->add($placedOrder, (string) __('Placed by an agent over UCP.'));
+            $this->orderEventNotifier->notify($placedOrder);
+        }
+
         return $this->quoteToCheckoutResponse->convert($cart, $checkoutId);
+    }
+
+    /**
+     * Everything standing between this checkout and an order. The store's own refusal is kept as the
+     * last message, so nothing is lost when the readiness checks saw no problem.
+     *
+     * @param CartInterface $cart
+     * @param string $refusal Wording Magento refused the order with
+     * @return MessageInterface[]
+     */
+    protected function completionBlockers(CartInterface $cart, string $refusal): array
+    {
+        $messages = $this->quoteValidator->validate($cart) ?? [];
+
+        /** @var MessageInterface $message */
+        $message = $this->messageFactory->create(['data' => [
+            MessageInterface::KEY_TYPE => 'error',
+            MessageInterface::KEY_CODE => 'invalid_request',
+            MessageInterface::KEY_SEVERITY => MessageInterface::SEVERITY_REQUIRES_BUYER_INPUT,
+            MessageInterface::KEY_CONTENT => $refusal,
+        ]]);
+
+        $messages[] = $message;
+
+        return $messages;
     }
 
     /**
@@ -173,7 +252,6 @@ class RestHandler implements RestHandlerInterface
         } catch (NoSuchEntityException $e) {
             throw new UcpException(
                 __('Checkout session not found: %1. Please create a new checkout session.', $maskedCartId),
-                'not_found',
                 'session_not_found',
                 404
             );
@@ -185,18 +263,25 @@ class RestHandler implements RestHandlerInterface
     /**
      * @param string $checkoutId
      * @param int $quoteId
+     * @param FulfillmentRequestInterface|null $fulfillment
+     * @param BuyerConsentResponseConsentInterface|null $consent
      * @return void
      */
     protected function recordCheckoutMeta(
         string $checkoutId,
         int $quoteId,
-        ?FulfillmentRequestInterface $fulfillment = null
+        ?FulfillmentRequestInterface $fulfillment = null,
+        ?BuyerConsentResponseConsentInterface $consent = null
     ): void {
         /** @var CheckoutMetaInterface $meta */
         $meta = $this->checkoutMetaFactory->create();
         $meta->setCheckoutId($checkoutId);
         $meta->setQuoteId($quoteId);
-        $meta->setSubmittedFulfillment($this->encodeFulfillment($fulfillment));
+        $meta->setSubmittedFulfillment($this->encode($fulfillment));
+        $meta->setBuyerConsent($this->encode($consent));
+        // Recorded at create time because the agent's header is only present on its own requests; an
+        // order event fires later, out of band, with no request to read it from.
+        $meta->setWebhookUrl($this->checkoutDataProcessor->getAgentWebhookUrl());
 
         $this->checkoutMetaRepository->save($meta);
     }
@@ -221,21 +306,47 @@ class RestHandler implements RestHandlerInterface
             return;
         }
 
-        $meta->setSubmittedFulfillment($this->encodeFulfillment($fulfillment));
+        $meta->setSubmittedFulfillment($this->encode($fulfillment));
         $this->checkoutMetaRepository->save($meta);
     }
 
     /**
-     * @param FulfillmentRequestInterface|null $fulfillment
-     * @return string|null
+     * Consent is a record of what the buyer agreed to, so a request that says nothing about it leaves
+     * the earlier answer standing rather than clearing it.
+     *
+     * @param string $checkoutId
+     * @param BuyerConsentResponseConsentInterface|null $consent
+     * @return void
      */
-    private function encodeFulfillment(?FulfillmentRequestInterface $fulfillment): ?string
+    protected function rememberBuyerConsent(
+        string $checkoutId,
+        ?BuyerConsentResponseConsentInterface $consent
+    ): void {
+        if ($consent === null) {
+            return;
+        }
+
+        try {
+            $meta = $this->checkoutMetaRepository->getByCheckoutId($checkoutId);
+        } catch (NoSuchEntityException $exception) {
+            return;
+        }
+
+        $meta->setBuyerConsent($this->encode($consent));
+        $this->checkoutMetaRepository->save($meta);
+    }
+
+    /**
+     * @param object|null $value A spec object, which serialises back to the JSON it arrived as
+     * @return string|null JSON, or null when there is nothing to store
+     */
+    private function encode(?object $value): ?string
     {
-        if ($fulfillment === null) {
+        if ($value === null) {
             return null;
         }
 
-        $encoded = json_encode($fulfillment);
+        $encoded = json_encode($value);
 
         return $encoded === false ? null : $encoded;
     }
@@ -257,5 +368,14 @@ class RestHandler implements RestHandlerInterface
 
         $meta->setOrderId($orderId);
         $this->checkoutMetaRepository->save($meta);
+
+        // The shared link is what status resolution reads; the meta row keeps the protocol-specific
+        // fields and its own order_id stays written until the contract release drops it.
+        $this->orderLinkRepository->link(
+            IdempotencyHandler::SCOPE,
+            $checkoutId,
+            (int) $meta->getQuoteId(),
+            $orderId
+        );
     }
 }

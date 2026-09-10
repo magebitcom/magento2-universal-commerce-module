@@ -12,7 +12,10 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Service\Shopping\Converter;
 
+use Magebit\AgenticCore\Model\Money\MinorUnits;
+use Magebit\AgenticCore\Model\Total\TypeLabel;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
+use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
 use Magento\Quote\Api\Data\CartInterface;
 use Magento\Quote\Model\Quote;
@@ -27,23 +30,33 @@ class QuoteToTotalsResponse
      * subtotal - discount + fulfillment + tax + fee.
      */
     private const TYPE_ORDER = [
-        TotalResponseInterface::TYPE_ITEMS_DISCOUNT,
-        TotalResponseInterface::TYPE_SUBTOTAL,
-        TotalResponseInterface::TYPE_DISCOUNT,
-        TotalResponseInterface::TYPE_FULFILLMENT,
-        TotalResponseInterface::TYPE_TAX,
-        TotalResponseInterface::TYPE_FEE,
-        TotalResponseInterface::TYPE_TOTAL,
+        TotalTypeInterface::TYPE_ITEMS_DISCOUNT,
+        TotalTypeInterface::TYPE_SUBTOTAL,
+        TotalTypeInterface::TYPE_DISCOUNT,
+        TotalTypeInterface::TYPE_FULFILLMENT,
+        TotalTypeInterface::TYPE_TAX,
+        TotalTypeInterface::TYPE_FEE,
+        TotalTypeInterface::TYPE_TOTAL,
+    ];
+
+    /**
+     * Types the spec constrains to `exclusiveMaximum: 0`. Every other type is `minimum: 0`.
+     */
+    private const NEGATIVE_TYPES = [
+        TotalTypeInterface::TYPE_ITEMS_DISCOUNT,
+        TotalTypeInterface::TYPE_DISCOUNT,
     ];
 
     /**
      * @param TotalResponseInterfaceFactory $totalResponseFactory
-     * @param PriceConverter $priceConverter
+     * @param MinorUnits $minorUnits
+     * @param TypeLabel $typeLabel
      * @param array<string, string> $typeMapping
      */
     public function __construct(
         private readonly TotalResponseInterfaceFactory $totalResponseFactory,
-        private readonly PriceConverter $priceConverter,
+        private readonly MinorUnits $minorUnits,
+        private readonly TypeLabel $typeLabel,
         private readonly array $typeMapping = [],
     ) {
     }
@@ -68,8 +81,6 @@ class QuoteToTotalsResponse
                 continue;
             }
 
-            // The spec requires amount >= 0, so a Magento discount's negative value
-            // is emitted as its magnitude and subtracted by the consumer.
             $amounts[$type] = ($amounts[$type] ?? 0.0) + abs((float) $cartTotal->getValue());
             $labels[$type] ??= (string) $cartTotal->getTitle();
         }
@@ -86,8 +97,8 @@ class QuoteToTotalsResponse
             /** @var TotalResponseInterface $total */
             $total = $this->totalResponseFactory->create();
             $total->setType($type);
-            $total->setDisplayText($labels[$type] ?? $this->fallbackLabel($type));
-            $total->setAmount($this->priceConverter->convert($amounts[$type], $currencyCode));
+            $total->setDisplayText($this->typeLabel->orFallback($labels[$type] ?? null, $type));
+            $total->setAmount($this->minorUnits->convert($this->signed($type, $amounts[$type]), $currencyCode));
 
             $totals[] = $total;
         }
@@ -105,17 +116,42 @@ class QuoteToTotalsResponse
      */
     private function withRequiredTotals(Quote $cart, array $amounts): array
     {
-        if (!isset($amounts[TotalResponseInterface::TYPE_SUBTOTAL])) {
+        if (!isset($amounts[TotalTypeInterface::TYPE_SUBTOTAL])) {
             $address = $cart->getIsVirtual() ? $cart->getBillingAddress() : $cart->getShippingAddress();
             $subtotal = $address->getSubtotal() ?? $cart->getSubtotal();
-            $amounts[TotalResponseInterface::TYPE_SUBTOTAL] = abs((float) $subtotal);
+            $amounts[TotalTypeInterface::TYPE_SUBTOTAL] = abs((float) $subtotal);
         }
 
-        if (!isset($amounts[TotalResponseInterface::TYPE_TOTAL])) {
-            $amounts[TotalResponseInterface::TYPE_TOTAL] = abs((float) $cart->getGrandTotal());
+        if (!isset($amounts[TotalTypeInterface::TYPE_TOTAL])) {
+            $amounts[TotalTypeInterface::TYPE_TOTAL] = abs((float) $cart->getGrandTotal());
+        }
+
+        // Magento reduces the grand total by a coupon without always emitting a discount row to go with
+        // it, which would leave the response showing a cheaper order for no stated reason. The amount is
+        // read off the address instead.
+        if (!isset($amounts[TotalTypeInterface::TYPE_DISCOUNT])) {
+            $address = $cart->getIsVirtual() ? $cart->getBillingAddress() : $cart->getShippingAddress();
+            $discount = abs((float) $address->getDiscountAmount());
+
+            if ($discount > 0.0) {
+                $amounts[TotalTypeInterface::TYPE_DISCOUNT] = $discount;
+            }
         }
 
         return $amounts;
+    }
+
+    /**
+     * The sign belongs to the type, not to whichever sign Magento happened to store the row with:
+     * the two discount codes that make up `discount` do not agree with each other.
+     *
+     * @param string $type
+     * @param float $magnitude
+     * @return float
+     */
+    private function signed(string $type, float $magnitude): float
+    {
+        return in_array($type, self::NEGATIVE_TYPES, true) ? -abs($magnitude) : abs($magnitude);
     }
 
     /**
@@ -129,14 +165,5 @@ class QuoteToTotalsResponse
         $type = $this->typeMapping[$magentoCode] ?? null;
 
         return in_array($type, self::TYPE_ORDER, true) ? $type : null;
-    }
-
-    /**
-     * @param string $type
-     * @return string
-     */
-    private function fallbackLabel(string $type): string
-    {
-        return ucfirst(str_replace('_', ' ', $type));
     }
 }

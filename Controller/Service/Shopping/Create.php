@@ -18,12 +18,14 @@ use Magebit\UniversalCommerce\Controller\ApiController;
 use Magento\Framework\Controller\Result\Json as ResultJson;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\App\RequestInterface;
-use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
+use Magebit\AgenticCore\Model\Validation\RequestValidator;
 use Magebit\UniversalCommerce\Api\Service\Shopping\RestHandlerInterface;
-use Magebit\UniversalCommerce\Model\Validation\ValidationResult;
-use Magebit\UniversalCommerce\Model\RequestClassBuilder;
+use Magebit\AgenticCore\Model\Validation\ValidationResult;
+use Magebit\AgenticCore\Model\Request\Hydrator;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Protocol\UndeclaredExtensions;
+use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
 use Psr\Log\LoggerInterface;
 use JsonSerializable;
 use Magento\Framework\Exception\LocalizedException;
@@ -34,11 +36,13 @@ class Create extends ApiController
         JsonFactory $resultJsonFactory,
         RequestInterface $request,
         RequestValidator $requestValidator,
-        RequestClassBuilder $requestClassBuilder,
+        Hydrator $hydrator,
         Config $config,
         MessageErrorInterfaceFactory $messageFactory,
         IdempotencyHandler $idempotencyHandler,
         LoggerInterface $logger,
+        VersionNegotiator $versionNegotiator,
+        private readonly UndeclaredExtensions $undeclaredExtensions,
         protected readonly CheckoutCreateRequestInterfaceFactory $checkoutCreateRequestFactory,
         protected readonly RestHandlerInterface $restHandler
     ) {
@@ -46,11 +50,12 @@ class Create extends ApiController
             $resultJsonFactory,
             $request,
             $requestValidator,
-            $requestClassBuilder,
+            $hydrator,
             $config,
             $messageFactory,
             $idempotencyHandler,
-            $logger
+            $logger,
+            $versionNegotiator
         );
     }
 
@@ -76,6 +81,8 @@ class Create extends ApiController
             $checkoutResponse = $this->restHandler->createCheckout($checkoutCreateRequest);
 
             if ($checkoutResponse instanceof JsonSerializable) {
+                $this->undeclaredExtensions->annotate($checkoutResponse, $this->decodedBody());
+
                 $this->idempotencyHandler->storeResponse($this->getHttpRequest(), $checkoutResponse, 201);
 
                 return $this->makeJsonResponse($checkoutResponse, 201);

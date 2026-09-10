@@ -13,5 +13,8 @@
         <job name="universal_commerce_idempotency_cleanup" instance="Magebit\UniversalCommerce\Model\IdempotencyKey\Cleanup" method="execute">
             <schedule>17 * * * *</schedule>
         </job>
+        <job name="universal_commerce_dispatch_webhooks" instance="Magebit\UniversalCommerce\Cron\DispatchWebhooks" method="execute">
+            <schedule>* * * * *</schedule>
+        </job>
     </group>
 </config>

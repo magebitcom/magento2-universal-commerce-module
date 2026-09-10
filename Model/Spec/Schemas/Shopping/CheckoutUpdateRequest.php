@@ -17,7 +17,9 @@ use Magebit\UcpSpec\Api\Shopping\DiscountResponseDiscountsObjectInterface;
 use Magebit\UcpSpec\Api\Shopping\FulfillmentUpdateRequestCheckoutInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentRequestInterface;
 use Magebit\UcpSpec\Data\Shopping\CheckoutUpdateRequest as GeneratedCheckoutUpdateRequest;
+use Magebit\UniversalCommerce\Api\Service\Shopping\BuyerWithConsentInterface;
 use Magebit\UniversalCommerce\Api\Service\Shopping\CheckoutUpdateRequestInterface;
+use Magebit\UcpSpec\Api\Shopping\CheckoutUpdateRequestInterface as BaseRequestInterface;
 
 /**
  * The base checkout request plus the fulfillment and discount extensions, which the spec ships as
@@ -25,6 +27,19 @@ use Magebit\UniversalCommerce\Api\Service\Shopping\CheckoutUpdateRequestInterfac
  */
 class CheckoutUpdateRequest extends GeneratedCheckoutUpdateRequest implements CheckoutUpdateRequestInterface
 {
+    /**
+     * Narrowed alongside the interface, so the consent the agent sent survives being read back.
+     *
+     * @return BuyerWithConsentInterface|null
+     */
+    public function getBuyer(): ?BuyerWithConsentInterface
+    {
+        return $this->instanceOrNull(
+            BaseRequestInterface::KEY_BUYER,
+            BuyerWithConsentInterface::class
+        );
+    }
+
     /**
      * @return FulfillmentRequestInterface|null
      */

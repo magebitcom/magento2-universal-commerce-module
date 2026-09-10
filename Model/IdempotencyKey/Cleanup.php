@@ -12,26 +12,21 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\IdempotencyKey;
 
-use Magebit\UniversalCommerce\Api\IdempotencyKeyRepositoryInterface;
+use Magebit\AgenticCore\Model\Idempotency\Purge;
 use Magebit\UniversalCommerce\Model\Config;
-use Magento\Framework\Stdlib\DateTime\DateTime;
 
 /**
- * Cron entry point that purges stored idempotent responses past their configured TTL.
+ * Cron entry point that purges stored idempotent responses past this module's configured TTL.
  */
 class Cleanup
 {
-    private const SECONDS_PER_HOUR = 3600;
-
     /**
-     * @param IdempotencyKeyRepositoryInterface $idempotencyRepository
+     * @param Purge $purge
      * @param Config $config
-     * @param DateTime $dateTime
      */
     public function __construct(
-        private readonly IdempotencyKeyRepositoryInterface $idempotencyRepository,
-        private readonly Config $config,
-        private readonly DateTime $dateTime
+        private readonly Purge $purge,
+        private readonly Config $config
     ) {
     }
 
@@ -40,17 +35,6 @@ class Cleanup
      */
     public function execute(): int
     {
-        $ttlHours = $this->config->getIdempotencyTtlHours();
-
-        if ($ttlHours < 1) {
-            return 0;
-        }
-
-        $expiredBefore = $this->dateTime->gmtDate(
-            'Y-m-d H:i:s',
-            $this->dateTime->gmtTimestamp() - $ttlHours * self::SECONDS_PER_HOUR
-        );
-
-        return $this->idempotencyRepository->deleteExpired($expiredBefore);
+        return $this->purge->execute($this->config->getIdempotencyTtlHours());
     }
 }

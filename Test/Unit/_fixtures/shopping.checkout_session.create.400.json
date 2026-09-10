@@ -1,0 +1,15 @@
+{
+    "ucp": {
+        "version": "2026-04-08",
+        "status": "error"
+    },
+    "messages": [
+        {
+            "type": "error",
+            "code": "validation_error",
+            "content": "Required field \"line_items\" is missing",
+            "severity": "requires_buyer_input",
+            "path": "$.line_items"
+        }
+    ]
+}

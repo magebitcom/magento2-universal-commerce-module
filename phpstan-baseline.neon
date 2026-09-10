@@ -1,12 +1,6 @@
 parameters:
 	ignoreErrors:
 		-
-			message: '#^Instanceof between Magento\\Framework\\App\\Request\\Http and Magento\\Framework\\App\\Request\\Http will always evaluate to true\.$#'
-			identifier: instanceof.alwaysTrue
-			count: 1
-			path: Controller/ApiController.php
-
-		-
 			message: '#^Cannot cast mixed to int\.$#'
 			identifier: cast.int
 			count: 3
@@ -37,54 +31,6 @@ parameters:
 			path: Model/CheckoutMeta/Model.php
 
 		-
-			message: '#^Cannot cast mixed to int\.$#'
-			identifier: cast.int
-			count: 2
-			path: Model/IdempotencyKey/Model.php
-
-		-
-			message: '#^Method Magebit\\UniversalCommerce\\Model\\IdempotencyKey\\Model\:\:getCreatedAt\(\) should return string\|null but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: Model/IdempotencyKey/Model.php
-
-		-
-			message: '#^Method Magebit\\UniversalCommerce\\Model\\IdempotencyKey\\Model\:\:getKey\(\) should return string\|null but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: Model/IdempotencyKey/Model.php
-
-		-
-			message: '#^Method Magebit\\UniversalCommerce\\Model\\IdempotencyKey\\Model\:\:getRequestHash\(\) should return string\|null but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: Model/IdempotencyKey/Model.php
-
-		-
-			message: '#^Method Magebit\\UniversalCommerce\\Model\\IdempotencyKey\\Model\:\:getResponseBody\(\) should return string\|null but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: Model/IdempotencyKey/Model.php
-
-		-
-			message: '#^Method Magebit\\UniversalCommerce\\Model\\IdempotencyKey\\Model\:\:getUpdatedAt\(\) should return string\|null but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: Model/IdempotencyKey/Model.php
-
-		-
-			message: '#^Parameter \#2 \$data of method Magebit\\UniversalCommerce\\Model\\RequestClassBuilder\:\:populateWithArray\(\) expects array\<mixed\>, mixed given\.$#'
-			identifier: argument.type
-			count: 1
-			path: Model/RequestClassBuilder.php
-
-		-
-			message: '#^Cannot access offset ''capabilities'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: Model/Service/Shopping/AgentProfileParser.php
-
-		-
 			message: '#^Cannot access offset ''webhook_url'' on mixed\.$#'
 			identifier: offsetAccess.nonOffsetAccessible
 			count: 1
@@ -99,12 +45,6 @@ parameters:
 		-
 			message: '#^Constant Magebit\\UniversalCommerce\\Model\\Service\\Shopping\\AgentProfileParser\:\:CACHE_TAG is unused\.$#'
 			identifier: classConstant.unused
-			count: 1
-			path: Model/Service/Shopping/AgentProfileParser.php
-
-		-
-			message: '#^Method Magebit\\UniversalCommerce\\Model\\Service\\Shopping\\AgentProfileParser\:\:extractWebhookUrl\(\) should return string\|null but returns mixed\.$#'
-			identifier: return.type
 			count: 1
 			path: Model/Service/Shopping/AgentProfileParser.php
 
@@ -139,12 +79,6 @@ parameters:
 			path: Model/Service/Shopping/AgentProfileParser.php
 
 		-
-			message: '#^Negated boolean expression is always false\.$#'
-			identifier: booleanNot.alwaysFalse
-			count: 1
-			path: Model/Service/Shopping/CheckoutDataProcessor.php
-
-		-
 			message: '#^Call to function is_array\(\) with array\<string\> will always evaluate to true\.$#'
 			identifier: function.alreadyNarrowedType
 			count: 1
@@ -168,14 +102,3 @@ parameters:
 			count: 1
 			path: Model/Service/Shopping/Converter/QuoteToFulfillmentResponse.php
 
-		-
-			message: '#^Parameter \#1 \$objectOrClass of class ReflectionClass constructor expects class\-string\<T of object\>\|T of object, string given\.$#'
-			identifier: argument.type
-			count: 1
-			path: Model/Validation/RequestValidator.php
-
-		-
-			message: '#^Parameter \#1 \$string of function strtolower expects string, string\|null given\.$#'
-			identifier: argument.type
-			count: 1
-			path: Model/Validation/RequestValidator.php

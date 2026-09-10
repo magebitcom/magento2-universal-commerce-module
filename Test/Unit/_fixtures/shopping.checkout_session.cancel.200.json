@@ -2,23 +2,23 @@
     "id": "checkout_session_placeholder_0001",
     "line_items": [
         {
-            "id": "1001",
+            "id": "id-d6a40317",
             "quantity": 2,
             "item": {
-                "id": "24-MB04",
-                "title": "Strive Shoulder Pack",
-                "price": 3200,
+                "id": "ucp-conformance-simple",
+                "title": "UCP Conformance Simple Product",
+                "price": 2000,
                 "image_url": "https://merchant.example/static/versionSTATIC/frontend/Magento/luma/en_US/Magento_Catalog/images/product/placeholder/image.jpg"
             },
             "totals": [
                 {
                     "type": "subtotal",
-                    "amount": 6400,
+                    "amount": 4000,
                     "display_text": "Subtotal"
                 },
                 {
                     "type": "total",
-                    "amount": 6400,
+                    "amount": 4000,
                     "display_text": "Total"
                 }
             ]
@@ -31,21 +31,36 @@
         "phone_number": "+15555550123"
     },
     "ucp": {
-        "version": "2026-01-23",
+        "version": "2026-04-08",
         "capabilities": {
             "dev.ucp.shopping.checkout": [
                 {
-                    "version": "2026-01-23",
+                    "version": "2026-04-08",
                     "spec": "https://ucp.dev/specs/shopping/checkout",
                     "schema": "https://ucp.dev/schemas/shopping/checkout.json"
                 }
             ],
             "dev.ucp.shopping.discount": [
                 {
-                    "version": "2026-01-23",
+                    "version": "2026-04-08",
                     "spec": "https://ucp.dev/specification/discount",
                     "schema": "https://ucp.dev/schemas/shopping/discount.json",
                     "extends": "dev.ucp.shopping.checkout"
+                }
+            ],
+            "dev.ucp.shopping.fulfillment": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/fulfillment",
+                    "schema": "https://ucp.dev/schemas/shopping/fulfillment.json",
+                    "extends": "dev.ucp.shopping.checkout"
+                }
+            ],
+            "dev.ucp.shopping.order": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/order",
+                    "schema": "https://ucp.dev/schemas/shopping/order.json"
                 }
             ]
         },
@@ -56,12 +71,12 @@
         {
             "type": "subtotal",
             "display_text": "Subtotal",
-            "amount": 6400
+            "amount": 4000
         },
         {
             "type": "fulfillment",
-            "display_text": "Shipping & Handling",
-            "amount": 0
+            "display_text": "Shipping & Handling (Flat Rate - Fixed)",
+            "amount": 1000
         },
         {
             "type": "tax",
@@ -71,7 +86,7 @@
         {
             "type": "total",
             "display_text": "Grand Total",
-            "amount": 6400
+            "amount": 5000
         }
     ],
     "links": [],
@@ -79,37 +94,68 @@
         "instruments": []
     },
     "fulfillment": {
-        "methods": []
+        "methods": [
+            {
+                "id": "shipping",
+                "type": "shipping",
+                "line_item_ids": [
+                    "id-d6a40317"
+                ],
+                "destinations": [
+                    {
+                        "id": "dest-1",
+                        "street_address": "1 Infinite Loop",
+                        "address_locality": "Cupertino",
+                        "address_region": "California",
+                        "address_country": "US",
+                        "postal_code": "95014",
+                        "first_name": "Ada",
+                        "last_name": "Lovelace",
+                        "phone_number": "+15555550123"
+                    }
+                ],
+                "selected_destination_id": "dest-1",
+                "groups": [
+                    {
+                        "id": "package",
+                        "line_item_ids": [
+                            "id-d6a40317"
+                        ],
+                        "options": [
+                            {
+                                "id": "flatrate_flatrate",
+                                "title": "Fixed",
+                                "description": "Flat Rate",
+                                "carrier": "Flat Rate",
+                                "totals": [
+                                    {
+                                        "type": "fulfillment",
+                                        "amount": 1000,
+                                        "display_text": "Fixed"
+                                    }
+                                ]
+                            },
+                            {
+                                "id": "tablerate_bestway",
+                                "title": "Table Rate",
+                                "description": "Best Way",
+                                "carrier": "Best Way",
+                                "totals": [
+                                    {
+                                        "type": "fulfillment",
+                                        "amount": 1500,
+                                        "display_text": "Table Rate"
+                                    }
+                                ]
+                            }
+                        ],
+                        "selected_option_id": "flatrate_flatrate"
+                    }
+                ]
+            }
+        ]
     },
-    "messages": [
-        {
-            "type": "error",
-            "path": "$.fulfillment.methods[0].destination.address_locality",
-            "code": "missing",
-            "severity": "requires_buyer_input",
-            "content": "City is required"
-        },
-        {
-            "type": "error",
-            "path": "$.fulfillment.methods[0].destination.address_country",
-            "code": "missing",
-            "severity": "requires_buyer_input",
-            "content": "Country is required"
-        },
-        {
-            "type": "error",
-            "path": "$.fulfillment.methods[0].destination.postal_code",
-            "code": "missing",
-            "severity": "requires_buyer_input",
-            "content": "Postcode is required"
-        },
-        {
-            "type": "error",
-            "path": "$.fulfillment.methods[0].destination.address_region",
-            "code": "missing",
-            "severity": "requires_buyer_input",
-            "content": "Region is required"
-        }
-    ],
+    "continue_url": "https://merchant.example/ucp/checkout/resume/id/x6JvCZLgDHN0EluhV6odK1tGa23WfCbD",
+    "messages": [],
     "status": "canceled"
 }

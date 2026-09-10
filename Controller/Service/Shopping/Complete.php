@@ -18,12 +18,14 @@ use Magebit\UniversalCommerce\Controller\ApiController;
 use Magento\Framework\Controller\Result\Json as ResultJson;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\App\RequestInterface;
-use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
+use Magebit\AgenticCore\Model\Validation\RequestValidator;
 use Magebit\UniversalCommerce\Api\Service\Shopping\RestHandlerInterface;
-use Magebit\UniversalCommerce\Model\Validation\ValidationResult;
-use Magebit\UniversalCommerce\Model\RequestClassBuilder;
+use Magebit\AgenticCore\Model\Validation\ValidationResult;
+use Magebit\AgenticCore\Model\Request\Hydrator;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Protocol\UndeclaredExtensions;
+use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
 use Psr\Log\LoggerInterface;
 use JsonSerializable;
 use Magento\Framework\Exception\LocalizedException;
@@ -34,11 +36,13 @@ class Complete extends ApiController
         JsonFactory $resultJsonFactory,
         RequestInterface $request,
         RequestValidator $requestValidator,
-        RequestClassBuilder $requestClassBuilder,
+        Hydrator $hydrator,
         Config $config,
         MessageErrorInterfaceFactory $messageFactory,
         IdempotencyHandler $idempotencyHandler,
         LoggerInterface $logger,
+        VersionNegotiator $versionNegotiator,
+        private readonly UndeclaredExtensions $undeclaredExtensions,
         protected readonly RestHandlerInterface $restHandler,
         protected readonly CheckoutCompleteRequestInterfaceFactory $completeRequestFactory
     ) {
@@ -46,11 +50,12 @@ class Complete extends ApiController
             $resultJsonFactory,
             $request,
             $requestValidator,
-            $requestClassBuilder,
+            $hydrator,
             $config,
             $messageFactory,
             $idempotencyHandler,
-            $logger
+            $logger,
+            $versionNegotiator
         );
     }
 
@@ -63,13 +68,7 @@ class Complete extends ApiController
         $checkoutId = $this->getHttpRequest()->getParam('checkout_id');
 
         if (!$checkoutId) {
-            return $this->makeErrorResponse('requires_escalation', [
-                $this->messageFactory->create(['data' => [
-                    'type' => 'error',
-                    'code' => 'invalid_request',
-                    'message' => 'Checkout ID is required',
-                ]])
-            ], 400);
+            return $this->missingCheckoutId();
         }
 
         // The body is {"payment": {...}} — the payment object is nested, not the root.
@@ -92,7 +91,9 @@ class Complete extends ApiController
             $completeCheckoutResponse = $this->restHandler->completeCheckout($checkoutId, $paymentData);
 
             if ($completeCheckoutResponse instanceof JsonSerializable) {
-                $this->idempotencyHandler->storeResponse($this->getHttpRequest(), $completeCheckoutResponse, 201);
+                $this->undeclaredExtensions->annotate($completeCheckoutResponse, $this->decodedBody());
+
+                $this->idempotencyHandler->storeResponse($this->getHttpRequest(), $completeCheckoutResponse, 200);
 
                 return $this->makeJsonResponse($completeCheckoutResponse);
             }

@@ -26,6 +26,7 @@
             "order_id": true,
             "webhook_url": true,
             "submitted_fulfillment": true,
+            "buyer_consent": true,
             "created_at": true,
             "updated_at": true
         },
@@ -34,6 +35,21 @@
             "UCP_CHECKOUT_META_CHECKOUT_ID": true,
             "UCP_CHECKOUT_META_QUOTE_ID_QUOTE_ENTITY_ID": true,
             "UCP_CHECKOUT_META_ORDER_ID_SALES_ORDER_ENTITY_ID": true
+        }
+    },
+    "ucp_order_adjustment": {
+        "column": {
+            "entity_id": true,
+            "order_id": true,
+            "adjustment_id": true,
+            "payload": true,
+            "created_at": true,
+            "updated_at": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "UCP_ORDER_ADJUSTMENT_ORDER_ID_ADJUSTMENT_ID": true,
+            "UCP_ORDER_ADJUSTMENT_ORDER_ID_SALES_ORDER_ENTITY_ID": true
         }
     }
 }

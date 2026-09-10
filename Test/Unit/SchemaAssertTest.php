@@ -25,6 +25,12 @@ class SchemaAssertTest extends TestCase
 
     private const TOTAL_SCHEMA = 'shopping/types/total_resp.json';
 
+    /**
+     * `total.type` became an open string in UCP `2026-04-08`, so the enum assertion needs a schema
+     * that still closes its vocabulary.
+     */
+    private const FULFILLMENT_METHOD_SCHEMA = 'shopping/types/fulfillment_available_method_resp.json';
+
     public function testAcceptsPayloadMatchingSchema(): void
     {
         $this->assertMatchesSchema(
@@ -36,7 +42,10 @@ class SchemaAssertTest extends TestCase
     public function testRejectsPayloadViolatingEnumAndReportsPointers(): void
     {
         try {
-            $this->assertMatchesSchema(['type' => 'not_a_total_type', 'amount' => 100], self::TOTAL_SCHEMA);
+            $this->assertMatchesSchema(
+                ['type' => 'teleport', 'line_item_ids' => ['li_1']],
+                self::FULFILLMENT_METHOD_SCHEMA
+            );
         } catch (AssertionFailedError $error) {
             $message = $error->getMessage();
             $this->assertStringContainsString('[enum]', $message);

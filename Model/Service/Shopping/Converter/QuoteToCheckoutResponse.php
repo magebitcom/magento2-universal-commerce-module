@@ -38,6 +38,10 @@ use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UcpSpec\Api\Shopping\Types\OrderConfirmationInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\OrderConfirmationInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\LinkInterfaceFactory;
+use Magebit\AgenticCore\Api\OrderLinkRepositoryInterface;
+use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\AgenticCore\Model\Checkout\CheckoutState;
+use Magebit\AgenticCore\Model\Checkout\StateResolver;
 use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Framework\Exception\NoSuchEntityException;
 
@@ -59,6 +63,8 @@ class QuoteToCheckoutResponse
      * @param OrderRepositoryInterface $orderRepository
      * @param LinkInterfaceFactory $linkFactory
      * @param Config $config
+     * @param StateResolver $stateResolver
+     * @param OrderLinkRepositoryInterface $orderLinkRepository
      */
     public function __construct(
         protected readonly CheckoutResponseInterfaceFactory $checkoutResponseFactory,
@@ -75,7 +81,9 @@ class QuoteToCheckoutResponse
         protected readonly OrderConfirmationInterfaceFactory $orderConfirmationFactory,
         protected readonly OrderRepositoryInterface $orderRepository,
         protected readonly LinkInterfaceFactory $linkFactory,
-        protected readonly Config $config
+        protected readonly Config $config,
+        protected readonly StateResolver $stateResolver,
+        protected readonly OrderLinkRepositoryInterface $orderLinkRepository
     ) {
     }
 
@@ -92,7 +100,7 @@ class QuoteToCheckoutResponse
 
         $response->setLineItems($this->getLineItems($quote));
 
-        if ($buyer = $this->getBuyer($quote)) {
+        if ($buyer = $this->getBuyer($quote, $this->getBuyerConsent($maskedCartId))) {
             $response->setBuyer($buyer);
         }
 
@@ -181,11 +189,35 @@ class QuoteToCheckoutResponse
 
     /**
      * @param CartInterface $quote
+     * @param array<mixed>|null $consent
      * @return BuyerInterface|null
      */
-    public function getBuyer(CartInterface $quote): ?BuyerInterface
+    public function getBuyer(CartInterface $quote, ?array $consent = null): ?BuyerInterface
     {
-        return $this->quoteToBuyerResponse->convert($quote);
+        return $this->quoteToBuyerResponse->convert($quote, $consent);
+    }
+
+    /**
+     * @param string $maskedCartId
+     * @return array<mixed>|null Consent as the agent recorded it
+     */
+    private function getBuyerConsent(string $maskedCartId): ?array
+    {
+        try {
+            $meta = $this->checkoutMetaRepository->getByCheckoutId($maskedCartId);
+        } catch (NoSuchEntityException $exception) {
+            return null;
+        }
+
+        $encoded = $meta->getBuyerConsent();
+
+        if ($encoded === null) {
+            return null;
+        }
+
+        $decoded = json_decode($encoded, true);
+
+        return is_array($decoded) ? $decoded : null;
     }
 
     /**
@@ -196,20 +228,38 @@ class QuoteToCheckoutResponse
      */
     public function getStatus(CartInterface $quote, array $validationErrors, bool $hasOrder = false): string
     {
-        // Placing an order deactivates the quote, so order state must win over quote state.
-        if ($hasOrder) {
-            return CheckoutResponseInterface::STATUS_COMPLETED;
+        $state = $this->stateResolver->resolve(
+            $quote,
+            $hasOrder,
+            $validationErrors !== [],
+            $this->needsBuyer($validationErrors)
+        );
+
+        return match ($state) {
+            CheckoutState::Completed => CheckoutResponseInterface::STATUS_COMPLETED,
+            CheckoutState::Canceled => CheckoutResponseInterface::STATUS_CANCELED,
+            CheckoutState::Incomplete => CheckoutResponseInterface::STATUS_INCOMPLETE,
+            CheckoutState::RequiresEscalation => CheckoutResponseInterface::STATUS_REQUIRES_ESCALATION,
+            CheckoutState::Ready => CheckoutResponseInterface::STATUS_READY_FOR_COMPLETE,
+        };
+    }
+
+    /**
+     * The spec ties escalation to severity: any error the buyer has to answer puts the whole session in
+     * `requires_escalation`, which is what tells the platform to hand off to the continue url.
+     *
+     * @param MessageInterface[] $validationErrors
+     * @return bool
+     */
+    public function needsBuyer(array $validationErrors): bool
+    {
+        foreach ($validationErrors as $message) {
+            if (str_starts_with((string) $message->getSeverity(), 'requires_')) {
+                return true;
+            }
         }
 
-        if (!$quote->getIsActive()) {
-            return CheckoutResponseInterface::STATUS_CANCELED;
-        }
-
-        if (!empty($validationErrors)) {
-            return CheckoutResponseInterface::STATUS_INCOMPLETE;
-        }
-
-        return CheckoutResponseInterface::STATUS_READY_FOR_COMPLETE;
+        return false;
     }
 
     /**
@@ -278,7 +328,7 @@ class QuoteToCheckoutResponse
      * @param CartInterface $quote
      * @return string|null RFC 3339 timestamp, or null when quotes do not expire
      */
-    private function getExpiresAt(CartInterface $quote): ?string
+    public function getExpiresAt(CartInterface $quote): ?string
     {
         $storeId = (int)$quote->getStoreId();
         $lifetimeDays = $this->config->getQuoteLifetimeDays($storeId);
@@ -297,7 +347,7 @@ class QuoteToCheckoutResponse
      * @param string $maskedCartId
      * @return string Browser URL that hands the agent's cart back to the buyer
      */
-    private function getContinueUrl(string $maskedCartId): string
+    public function getContinueUrl(string $maskedCartId): string
     {
         return $this->config->getApiBaseUrl() . '/ucp/checkout/resume/id/' . $maskedCartId;
     }
@@ -308,13 +358,11 @@ class QuoteToCheckoutResponse
      */
     protected function getOrder(string $checkoutId): ?OrderConfirmationInterface
     {
-        try {
-            $orderId = $this->checkoutMetaRepository->getByCheckoutId($checkoutId)->getOrderId();
-        } catch (NoSuchEntityException $exception) {
-            return null;
-        }
+        // Read from the shared link rather than the meta row: placement is recorded in one place
+        // for both protocols now, and the meta row keeps only its protocol-specific fields.
+        $orderId = $this->orderLinkRepository->findOrderId(IdempotencyHandler::SCOPE, $checkoutId);
 
-        if (!$orderId) {
+        if ($orderId === null) {
             return null;
         }
 
@@ -326,7 +374,9 @@ class QuoteToCheckoutResponse
 
         /** @var OrderConfirmationInterface $confirmation */
         $confirmation = $this->orderConfirmationFactory->create();
-        $confirmation->setId((string) $order->getIncrementId());
+        // Same identifier the order endpoint answers to, so the agent can come back for the order.
+        $confirmation->setId($checkoutId);
+        $confirmation->setLabel((string) $order->getIncrementId());
         $confirmation->setPermalinkUrl(
             $this->config->getApiBaseUrl((int) $order->getStoreId())
             . '/sales/order/view/order_id/' . $orderId

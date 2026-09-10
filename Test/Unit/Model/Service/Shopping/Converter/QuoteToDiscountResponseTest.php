@@ -16,7 +16,7 @@ use Magebit\UcpSpec\Api\Shopping\DiscountResponseAppliedDiscountInterfaceFactory
 use Magebit\UcpSpec\Api\Shopping\DiscountResponseDiscountsObjectInterfaceFactory;
 use Magebit\UcpSpec\Data\Shopping\DiscountResponseAppliedDiscount;
 use Magebit\UcpSpec\Data\Shopping\DiscountResponseDiscountsObject;
-use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\PriceConverter;
+use Magebit\AgenticCore\Model\Money\MinorUnits;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\QuoteToDiscountResponse;
 use Magento\Quote\Api\Data\CurrencyInterface;
 use Magento\Quote\Model\Quote;
@@ -40,7 +40,7 @@ class QuoteToDiscountResponseTest extends TestCase
         $appliedFactory->method('create')
             ->willReturnCallback(fn (): DiscountResponseAppliedDiscount => new DiscountResponseAppliedDiscount());
 
-        $this->converter = new QuoteToDiscountResponse($discountsFactory, $appliedFactory, new PriceConverter());
+        $this->converter = new QuoteToDiscountResponse($discountsFactory, $appliedFactory, new MinorUnits());
     }
 
     /**

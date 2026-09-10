@@ -13,8 +13,10 @@ declare(strict_types=1);
 namespace Magebit\UniversalCommerce\Test\Unit\Model\Service\Shopping\Converter;
 
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
+use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
-use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\PriceConverter;
+use Magebit\AgenticCore\Model\Money\MinorUnits;
+use Magebit\AgenticCore\Model\Total\TypeLabel;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\QuoteToTotalsResponse;
 use Magebit\UcpSpec\Data\Shopping\Types\TotalResponse;
 use Magebit\UniversalCommerce\Test\Unit\Model\Stub\TotalRow;
@@ -27,12 +29,12 @@ use PHPUnit\Framework\TestCase;
 class QuoteToTotalsResponseTest extends TestCase
 {
     private const MAPPING = [
-        'subtotal' => TotalResponseInterface::TYPE_SUBTOTAL,
-        'discount' => TotalResponseInterface::TYPE_DISCOUNT,
-        'shipping_discount' => TotalResponseInterface::TYPE_DISCOUNT,
-        'shipping' => TotalResponseInterface::TYPE_FULFILLMENT,
-        'tax' => TotalResponseInterface::TYPE_TAX,
-        'grand_total' => TotalResponseInterface::TYPE_TOTAL,
+        'subtotal' => TotalTypeInterface::TYPE_SUBTOTAL,
+        'discount' => TotalTypeInterface::TYPE_DISCOUNT,
+        'shipping_discount' => TotalTypeInterface::TYPE_DISCOUNT,
+        'shipping' => TotalTypeInterface::TYPE_FULFILLMENT,
+        'tax' => TotalTypeInterface::TYPE_TAX,
+        'grand_total' => TotalTypeInterface::TYPE_TOTAL,
     ];
 
     /** @var QuoteToTotalsResponse */
@@ -46,15 +48,17 @@ class QuoteToTotalsResponseTest extends TestCase
         $factory = $this->createMock(TotalResponseInterfaceFactory::class);
         $factory->method('create')->willReturnCallback(fn (): TotalResponse => new TotalResponse());
 
-        $this->converter = new QuoteToTotalsResponse($factory, new PriceConverter(), self::MAPPING);
+        $this->converter = new QuoteToTotalsResponse($factory, new MinorUnits(), new TypeLabel(), self::MAPPING);
     }
 
     /**
-     * Magento reports discounts negative; the spec types amount as minimum 0.
+     * The sign is intrinsic to the value: `total_resp` types discount amounts as `signed_amount` with
+     * `exclusiveMaximum: 0`, so a positive discount is a schema violation rather than a presentation
+     * choice. The 2026-01-23 snapshot typed every amount `minimum: 0`, which is why this reversed.
      *
      * @return void
      */
-    public function testDiscountIsEmittedAsAPositiveAmount(): void
+    public function testDiscountIsEmittedAsANegativeAmount(): void
     {
         $totals = $this->convert([
             ['subtotal', 'Subtotal', 100.00],
@@ -62,22 +66,48 @@ class QuoteToTotalsResponseTest extends TestCase
             ['grand_total', 'Grand Total', 85.00],
         ]);
 
-        $this->assertSame(1500, $totals[TotalResponseInterface::TYPE_DISCOUNT]);
+        $this->assertSame(-1500, $totals[TotalTypeInterface::TYPE_DISCOUNT]);
     }
 
     /**
+     * Magento's own sign is not consistent between total rows, so the type decides the sign rather
+     * than the value that arrived.
+     *
      * @return void
      */
-    public function testEveryAmountIsNonNegative(): void
+    public function testAPositiveMagentoDiscountRowIsStillEmittedNegative(): void
+    {
+        $totals = $this->convert([
+            ['subtotal', 'Subtotal', 100.00],
+            ['discount', 'Discount', 15.00],
+            ['grand_total', 'Grand Total', 85.00],
+        ]);
+
+        $this->assertSame(-1500, $totals[TotalTypeInterface::TYPE_DISCOUNT]);
+    }
+
+    /**
+     * `subtotal`, `fulfillment`, `tax` and `fee` carry `minimum: 0`, so only discounts may be negative.
+     *
+     * @return void
+     */
+    public function testOnlyDiscountAmountsAreNegative(): void
     {
         $totals = $this->convert([
             ['subtotal', 'Subtotal', 100.00],
             ['discount', 'Discount', -15.00],
             ['shipping_discount', 'Shipping Discount', -5.00],
-            ['grand_total', 'Grand Total', 80.00],
+            ['shipping', 'Shipping', 7.50],
+            ['tax', 'Tax', 4.25],
+            ['grand_total', 'Grand Total', 91.75],
         ]);
 
-        foreach ($totals as $amount) {
+        foreach ($totals as $type => $amount) {
+            if ($type === TotalTypeInterface::TYPE_DISCOUNT) {
+                $this->assertLessThan(0, $amount);
+                continue;
+            }
+
             $this->assertGreaterThanOrEqual(0, $amount);
         }
     }
@@ -96,7 +126,7 @@ class QuoteToTotalsResponseTest extends TestCase
             ['grand_total', 'Grand Total', 80.00],
         ]);
 
-        $this->assertSame(2000, $totals[TotalResponseInterface::TYPE_DISCOUNT]);
+        $this->assertSame(-2000, $totals[TotalTypeInterface::TYPE_DISCOUNT]);
     }
 
     /**
@@ -113,7 +143,7 @@ class QuoteToTotalsResponseTest extends TestCase
         ]);
 
         $this->assertSame(
-            [TotalResponseInterface::TYPE_SUBTOTAL, TotalResponseInterface::TYPE_TOTAL],
+            [TotalTypeInterface::TYPE_SUBTOTAL, TotalTypeInterface::TYPE_TOTAL],
             array_keys($totals)
         );
     }
@@ -131,8 +161,8 @@ class QuoteToTotalsResponseTest extends TestCase
 
         $types = array_map(fn (TotalResponseInterface $t): string => $t->getType(), $response);
 
-        $this->assertSame(1, array_count_values($types)[TotalResponseInterface::TYPE_SUBTOTAL]);
-        $this->assertSame(1, array_count_values($types)[TotalResponseInterface::TYPE_TOTAL]);
+        $this->assertSame(1, array_count_values($types)[TotalTypeInterface::TYPE_SUBTOTAL]);
+        $this->assertSame(1, array_count_values($types)[TotalTypeInterface::TYPE_TOTAL]);
     }
 
     /**
@@ -142,8 +172,8 @@ class QuoteToTotalsResponseTest extends TestCase
     {
         $totals = $this->convert([['grand_total', 'Grand Total', 42.00]], 37.50);
 
-        $this->assertSame(3750, $totals[TotalResponseInterface::TYPE_SUBTOTAL]);
-        $this->assertSame(4200, $totals[TotalResponseInterface::TYPE_TOTAL]);
+        $this->assertSame(3750, $totals[TotalTypeInterface::TYPE_SUBTOTAL]);
+        $this->assertSame(4200, $totals[TotalTypeInterface::TYPE_TOTAL]);
     }
 
     /**
@@ -160,10 +190,10 @@ class QuoteToTotalsResponseTest extends TestCase
 
         $this->assertSame(
             [
-                TotalResponseInterface::TYPE_SUBTOTAL,
-                TotalResponseInterface::TYPE_DISCOUNT,
-                TotalResponseInterface::TYPE_TAX,
-                TotalResponseInterface::TYPE_TOTAL,
+                TotalTypeInterface::TYPE_SUBTOTAL,
+                TotalTypeInterface::TYPE_DISCOUNT,
+                TotalTypeInterface::TYPE_TAX,
+                TotalTypeInterface::TYPE_TOTAL,
             ],
             array_map(fn (TotalResponseInterface $t): string => $t->getType(), $response)
         );
@@ -186,11 +216,79 @@ class QuoteToTotalsResponseTest extends TestCase
     }
 
     /**
+     * Magento takes a coupon off the grand total without always emitting a discount row to go with it.
+     * Left alone the response shows a cheaper order with nothing to explain it.
+     *
+     * @return void
+     */
+    public function testADiscountOnTheAddressIsReportedWhenMagentoEmitsNoRow(): void
+    {
+        $quote = $this->quote([
+            ['subtotal', 'Subtotal', 20.00],
+            ['grand_total', 'Grand Total', 18.00],
+        ], addressDiscount: -2.00);
+
+        $totals = $this->converter->convert($quote);
+        $discount = $this->byType($totals, TotalTypeInterface::TYPE_DISCOUNT);
+
+        $this->assertNotNull($discount, 'the discount was dropped from the response');
+        $this->assertSame(-200, $discount->getAmount());
+    }
+
+    /**
+     * @return void
+     */
+    public function testTheAddressDiscountIsIgnoredWhenMagentoAlreadyEmittedOne(): void
+    {
+        $quote = $this->quote([
+            ['subtotal', 'Subtotal', 20.00],
+            ['discount', 'Discount (10OFF)', -2.00],
+            ['grand_total', 'Grand Total', 18.00],
+        ], addressDiscount: -2.00);
+
+        $discount = $this->byType($this->converter->convert($quote), TotalTypeInterface::TYPE_DISCOUNT);
+
+        $this->assertNotNull($discount);
+        $this->assertSame(-200, $discount->getAmount());
+        $this->assertSame('Discount (10OFF)', $discount->getDisplayText());
+    }
+
+    /**
+     * @return void
+     */
+    public function testNoDiscountTotalWhenNothingWasDiscounted(): void
+    {
+        $quote = $this->quote([
+            ['subtotal', 'Subtotal', 20.00],
+            ['grand_total', 'Grand Total', 20.00],
+        ]);
+
+        $this->assertNull($this->byType($this->converter->convert($quote), TotalTypeInterface::TYPE_DISCOUNT));
+    }
+
+    /**
+     * @param array<TotalResponseInterface> $totals
+     * @param string $type
+     * @return TotalResponseInterface|null
+     */
+    private function byType(array $totals, string $type): ?TotalResponseInterface
+    {
+        foreach ($totals as $total) {
+            if ($total->getType() === $type) {
+                return $total;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param array<array{0: string, 1: string, 2: float}> $rows
      * @param float $addressSubtotal
+     * @param float $addressDiscount Discount Magento stored on the address
      * @return Quote&MockObject
      */
-    private function quote(array $rows, float $addressSubtotal = 0.0): Quote
+    private function quote(array $rows, float $addressSubtotal = 0.0, float $addressDiscount = 0.0): Quote
     {
         $totals = [];
 
@@ -204,9 +302,10 @@ class QuoteToTotalsResponseTest extends TestCase
         // getSubtotal() on a quote address resolves through __call, so it must be added.
         $address = $this->getMockBuilder(Address::class)
             ->disableOriginalConstructor()
-            ->addMethods(['getSubtotal'])
+            ->addMethods(['getSubtotal', 'getDiscountAmount'])
             ->getMock();
         $address->method('getSubtotal')->willReturn($addressSubtotal);
+        $address->method('getDiscountAmount')->willReturn($addressDiscount);
 
         $quote = $this->getMockBuilder(Quote::class)
             ->disableOriginalConstructor()

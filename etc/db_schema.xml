@@ -38,6 +38,7 @@
         <column xsi:type="int" name="order_id" nullable="true" unsigned="true" comment="Order ID"/>
         <column xsi:type="varchar" name="webhook_url" nullable="true" length="255" comment="Webhook URL"/>
         <column xsi:type="text" name="submitted_fulfillment" nullable="true" comment="Fulfillment tree as the agent submitted it, echoed back on every response"/>
+        <column xsi:type="text" name="buyer_consent" nullable="true" comment="Data-processing consent the agent recorded for this buyer"/>
         <column xsi:type="datetime" name="created_at" nullable="false" default="CURRENT_TIMESTAMP" comment="Created At"/>
         <column xsi:type="datetime" name="updated_at" nullable="false" default="CURRENT_TIMESTAMP" on_update="true" comment="Updated At"/>
         <constraint xsi:type="primary" referenceId="PRIMARY">
@@ -48,5 +49,22 @@
         </constraint>
         <constraint xsi:type="foreign" referenceId="UCP_CHECKOUT_META_QUOTE_ID_QUOTE_ENTITY_ID" table="ucp_checkout_meta" column="quote_id" referenceTable="quote" referenceColumn="entity_id" onDelete="CASCADE"/>
         <constraint xsi:type="foreign" referenceId="UCP_CHECKOUT_META_ORDER_ID_SALES_ORDER_ENTITY_ID" table="ucp_checkout_meta" column="order_id" referenceTable="sales_order" referenceColumn="entity_id" onDelete="SET NULL"/>
+    </table>
+
+    <table name="ucp_order_adjustment" resource="default" engine="innodb" comment="Post-order adjustments an agent asked this store to record">
+        <column xsi:type="int" name="entity_id" unsigned="true" nullable="false" identity="true" comment="Entity ID"/>
+        <column xsi:type="int" name="order_id" nullable="false" unsigned="true" comment="Order ID"/>
+        <column xsi:type="varchar" name="adjustment_id" nullable="false" length="255" comment="Identifier the agent gave this adjustment"/>
+        <column xsi:type="text" name="payload" nullable="false" comment="Adjustment exactly as the agent submitted it, so it is reported back unchanged"/>
+        <column xsi:type="datetime" name="created_at" nullable="false" default="CURRENT_TIMESTAMP" comment="Created At"/>
+        <column xsi:type="datetime" name="updated_at" nullable="false" default="CURRENT_TIMESTAMP" on_update="true" comment="Updated At"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="entity_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="UCP_ORDER_ADJUSTMENT_ORDER_ID_ADJUSTMENT_ID">
+            <column name="order_id"/>
+            <column name="adjustment_id"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="UCP_ORDER_ADJUSTMENT_ORDER_ID_SALES_ORDER_ENTITY_ID" table="ucp_order_adjustment" column="order_id" referenceTable="sales_order" referenceColumn="entity_id" onDelete="CASCADE"/>
     </table>
 </schema>

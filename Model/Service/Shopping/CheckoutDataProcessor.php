@@ -20,18 +20,22 @@ use Magebit\UcpSpec\Api\Shopping\Types\LineItemUpdateRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\MessageInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\PostalAddressInterface;
+use Magebit\AgenticCore\Model\Buyer\BuyerIdentity;
+use Magebit\AgenticCore\Model\Buyer\BuyerWriter;
+use Magebit\AgenticCore\Model\Quote\AddressWriter;
+use Magebit\AgenticCore\Model\Quote\LineItemOutcome;
+use Magebit\AgenticCore\Model\Quote\LineItemResult;
+use Magebit\AgenticCore\Model\Quote\LineItemWriter;
+use Magebit\AgenticCore\Model\Quote\PersonalInformationCopier;
+use Magebit\AgenticCore\Model\Quote\PostalAddress as CorePostalAddress;
+use Magebit\AgenticCore\Model\Quote\ShippingMethodWriter;
 use Magebit\UniversalCommerce\Api\Service\Shopping\CheckoutCreateRequestInterface;
 use Magebit\UniversalCommerce\Api\Service\Shopping\CheckoutUpdateRequestInterface;
 use Magebit\UniversalCommerce\Api\Service\Shopping\QuoteValidatorInterface;
-use Magento\Catalog\Api\ProductRepositoryInterface;
-use Magento\Catalog\Model\Product;
 use Magento\Framework\App\Request\Http;
-use Magento\Framework\Exception\LocalizedException;
-use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Quote\Api\Data\CartInterface;
 use Magento\Quote\Api\GuestCouponManagementInterface;
 use Magento\Quote\Model\Quote;
-use Magento\Quote\Model\Quote\Address;
 
 class CheckoutDataProcessor implements QuoteValidatorInterface
 {
@@ -44,21 +48,33 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
 
     public const CODE_INVALID = 'invalid';
 
+    public const CODE_NOT_FOUND = 'not_found';
+
     public const CODE_OUT_OF_STOCK = 'out_of_stock';
 
+    public const CODE_NOT_APPLIED = 'not_applied';
+
     /**
-     * @param ProductRepositoryInterface $productRepository
+     * @param LineItemWriter $lineItemWriter
+     * @param AddressWriter $addressWriter
+     * @param PersonalInformationCopier $personalInformationCopier
+     * @param ShippingMethodWriter $shippingMethodWriter
      * @param GuestCouponManagementInterface $guestCouponManagement
      * @param AgentProfileParser $agentProfileParser
      * @param Http $httpRequest
      * @param MessageInterfaceFactory $messageFactory
+     * @param BuyerWriter $buyerWriter
      */
     public function __construct(
-        protected readonly ProductRepositoryInterface $productRepository,
+        protected readonly LineItemWriter $lineItemWriter,
+        protected readonly AddressWriter $addressWriter,
+        protected readonly PersonalInformationCopier $personalInformationCopier,
+        protected readonly ShippingMethodWriter $shippingMethodWriter,
         protected readonly GuestCouponManagementInterface $guestCouponManagement,
         protected readonly AgentProfileParser $agentProfileParser,
         protected readonly Http $httpRequest,
-        protected readonly MessageInterfaceFactory $messageFactory
+        protected readonly MessageInterfaceFactory $messageFactory,
+        protected readonly BuyerWriter $buyerWriter
     ) {
     }
 
@@ -88,6 +104,7 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
             $this->processFulfillmentInformation($cart, $request->getFulfillment());
         }
 
+        $this->fillBillingFromShipping($cart);
         $this->resolveBillingCountry($cart);
 
         if ($request->getDiscounts()) {
@@ -121,6 +138,7 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
             $this->processFulfillmentInformation($cart, $request->getFulfillment());
         }
 
+        $this->fillBillingFromShipping($cart);
         $this->resolveBillingCountry($cart);
 
         if ($request->getDiscounts()) {
@@ -148,23 +166,22 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
     }
 
     /**
-     * Process agent profile
+     * The URL the agent wants order lifecycle events sent to, from the profile its `UCP-Agent` header
+     * points at. Persisted with the checkout so it is still available when the order moves.
      *
-     * @return void
+     * @return string|null
      */
-    public function processAgentProfile(): void
+    public function getAgentWebhookUrl(): ?string
     {
         $ucpAgentHeader = $this->httpRequest->getHeader('UCP-Agent');
 
-        if (!is_string($ucpAgentHeader)) {
-            return;
+        if (!is_string($ucpAgentHeader) || $ucpAgentHeader === '') {
+            return null;
         }
 
-        $agentProfile = $this->agentProfileParser->parse($ucpAgentHeader);
-
-        if (!$agentProfile) {
-            return;
-        }
+        // The parser caps the fetch at five seconds, follows at most three redirects and caches for an
+        // hour, so resolving the profile inline costs a bounded miss rather than an open-ended wait.
+        return $this->agentProfileParser->parseWebhookUrl($ucpAgentHeader);
     }
 
     /**
@@ -177,35 +194,17 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
     public function processBuyerInformation(CartInterface $cart, BuyerInterface $buyer): void
     {
         /** @var Quote $cart */
-        if ($buyer->getEmail()) {
-            $cart->setCustomerEmail($buyer->getEmail());
-        }
+        $identity = new BuyerIdentity(
+            $buyer->getFirstName(),
+            $buyer->getLastName(),
+            $buyer->getEmail(),
+            $buyer->getPhoneNumber()
+        );
 
-        if ($buyer->getFirstName()) {
-            $cart->setCustomerFirstname($buyer->getFirstName());
-        }
-
-        if ($buyer->getLastName()) {
-            $cart->setCustomerLastname($buyer->getLastName());
-        }
-
-        $billingAddress = $cart->getBillingAddress();
-
-        if ($buyer->getEmail()) {
-            $billingAddress->setEmail($buyer->getEmail());
-        }
-
-        if ($buyer->getFirstName()) {
-            $billingAddress->setFirstname($buyer->getFirstName());
-        }
-
-        if ($buyer->getLastName()) {
-            $billingAddress->setLastname($buyer->getLastName());
-        }
-
-        if ($buyer->getPhoneNumber()) {
-            $billingAddress->setTelephone($buyer->getPhoneNumber());
-        }
+        $this->buyerWriter->writeCustomer($cart, $identity);
+        // The billing address, not the shipping one: this protocol carries the delivery destination
+        // inside the fulfillment request instead.
+        $this->buyerWriter->writeContact($cart->getBillingAddress(), $identity);
     }
 
     /**
@@ -218,30 +217,88 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
     public function processLineItems(CartInterface $cart, array $lineItems): void
     {
         /** @var Quote $cart */
-        $cart->removeAllItems();
+        $items = array_map(
+            fn ($lineItem): array => [
+                'sku' => (string) $lineItem->getItem()->getId(),
+                'quantity' => $lineItem->getQuantity(),
+            ],
+            array_values($lineItems)
+        );
 
-        foreach (array_values($lineItems) as $index => $lineItem) {
-            $sku = $lineItem->getItem()->getId();
-            $path = sprintf('$.line_items[%d].item.id', $index);
-            $product = $this->loadProduct($cart, $sku);
-
-            if (!$product) {
-                $this->addMessage($cart, self::CODE_INVALID, $path, sprintf('Product "%s" does not exist.', $sku));
-                continue;
-            }
-
-            if (!$product->isSalable()) {
-                $this->addMessage(
-                    $cart,
-                    self::CODE_OUT_OF_STOCK,
-                    $path,
-                    sprintf('Product "%s" is not available for purchase.', $sku)
-                );
-                continue;
-            }
-
-            $this->addProductToCart($cart, $product, $lineItem->getQuantity(), $path);
+        foreach ($this->lineItemWriter->write($cart, $items) as $result) {
+            $this->reportLineItem($cart, $result);
         }
+    }
+
+    /**
+     * The match is exhaustive over the enum on purpose: a fifth outcome in the shared writer becomes a
+     * visible gap here rather than a silently dropped message.
+     *
+     * @param Quote $cart
+     * @param LineItemResult $result
+     * @return void
+     */
+    private function reportLineItem(Quote $cart, LineItemResult $result): void
+    {
+        $path = sprintf('$.line_items[%d].item.id', $result->index);
+
+        match ($result->outcome) {
+            LineItemOutcome::Added => null,
+            LineItemOutcome::NotFound => $this->addMessage(
+                $cart,
+                self::CODE_NOT_FOUND,
+                $path,
+                sprintf('Product "%s" does not exist.', $result->sku)
+            ),
+            LineItemOutcome::NotSalable => $this->addMessage(
+                $cart,
+                self::CODE_OUT_OF_STOCK,
+                $path,
+                sprintf('Product "%s" is not available for purchase.', $result->sku)
+            ),
+            LineItemOutcome::InsufficientStock => $this->addMessage(
+                $cart,
+                self::CODE_OUT_OF_STOCK,
+                $path,
+                $result->reason ?? sprintf('Product "%s" is not available in that quantity.', $result->sku)
+            ),
+            LineItemOutcome::InvalidQuantity => $this->addMessage(
+                $cart,
+                self::CODE_INVALID,
+                $path,
+                $result->reason ?? sprintf('Product "%s" cannot be bought in that quantity.', $result->sku)
+            ),
+            LineItemOutcome::Rejected => $this->addMessage(
+                $cart,
+                self::CODE_INVALID,
+                $path,
+                $result->reason ?? sprintf('Product "%s" could not be added.', $result->sku)
+            ),
+        };
+    }
+
+    /**
+     * A store bills where it ships unless the agent named a billing address of its own — the same thing
+     * a storefront does when the buyer leaves "same as shipping" ticked. Without it a checkout that
+     * carries only a destination has no billing address at all, and Magento refuses the order.
+     *
+     * @param CartInterface $cart
+     * @return void
+     */
+    public function fillBillingFromShipping(CartInterface $cart): void
+    {
+        /** @var Quote $cart */
+        if ($cart->getIsVirtual()) {
+            return;
+        }
+
+        $billingAddress = $cart->getBillingAddress();
+
+        if (trim((string) $billingAddress->getStreetLine(1)) !== '') {
+            return;
+        }
+
+        $this->personalInformationCopier->copyPostalFields($cart->getShippingAddress(), $billingAddress);
     }
 
     /**
@@ -253,25 +310,7 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
     public function copyPersonalInformationFromBillingToShipping(CartInterface $cart): void
     {
         /** @var Quote $cart */
-        $billingAddress = $cart->getBillingAddress();
-        $shippingAddress = $cart->getShippingAddress();
-
-        if ($billingAddress->getFirstname()) {
-            $shippingAddress->setFirstname($billingAddress->getFirstname());
-        }
-
-        if ($billingAddress->getLastname()) {
-            $shippingAddress->setLastname($billingAddress->getLastname());
-        }
-
-        if ($billingAddress->getEmail()) {
-            $shippingAddress->setEmail($billingAddress->getEmail());
-        }
-
-        // Quote addresses store the phone under `telephone`; getPhoneNumber() resolved to an unset data key.
-        if ($billingAddress->getTelephone()) {
-            $shippingAddress->setTelephone($billingAddress->getTelephone());
-        }
+        $this->personalInformationCopier->copyIdentity($cart->getBillingAddress(), $cart->getShippingAddress());
     }
 
     /**
@@ -312,17 +351,7 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
     public function setShippingMethodToCart(CartInterface $cart, string $shippingMethod): void
     {
         /** @var Quote $cart */
-        $shippingAddress = $cart->getShippingAddress();
-        $shippingAddress->setShippingMethod($shippingMethod);
-
-        $cartExtension = $cart->getExtensionAttributes();
-        if ($cartExtension && $cartExtension->getShippingAssignments()) {
-            $cartExtension->getShippingAssignments()[0]
-                ->getShipping()
-                ->setMethod($shippingMethod);
-        }
-
-        $shippingAddress->setCollectShippingRates(true);
+        $this->shippingMethodWriter->write($cart, $shippingMethod);
     }
 
     /**
@@ -336,7 +365,7 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
     {
         /** @var Quote $cart */
         $shippingAddress = $cart->getShippingAddress();
-        $this->applyAddressFields($shippingAddress, $destination);
+        $this->addressWriter->write($shippingAddress, $this->toPostalAddress($destination));
 
         // Rates cached against the previous destination are stale once the address moves.
         $shippingAddress->setCollectShippingRates(true);
@@ -373,6 +402,17 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
             return;
         }
 
+        // Magento carries one coupon per cart, so anything past the first is reported rather than
+        // dropped: an agent that sent two codes has to be told which one counted.
+        foreach (array_slice(array_values($codes), 1) as $index => $unused) {
+            $this->addMessage(
+                $cart,
+                self::CODE_NOT_APPLIED,
+                sprintf('$.discounts.codes[%d]', $index + 1),
+                sprintf('This store applies one discount code at a time, so "%s" was not applied.', $unused)
+            );
+        }
+
         try {
             $this->guestCouponManagement->set($maskedCartId, $couponCode);
             $cart->collectTotals();
@@ -392,7 +432,7 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
     public function processBillingAddress(CartInterface $cart, PostalAddressInterface $address): void
     {
         /** @var Quote $cart */
-        $this->applyAddressFields($cart->getBillingAddress(), $address);
+        $this->addressWriter->write($cart->getBillingAddress(), $this->toPostalAddress($address));
     }
 
     /**
@@ -418,49 +458,25 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
     }
 
     /**
-     * Copy the UCP postal fields onto a quote address
+     * Turns either submitted address type into the shared writer's protocol-free value object.
      *
-     * @param Address $address
      * @param FulfillmentDestinationRequestInterface|PostalAddressInterface $source
-     * @return void
+     * @return CorePostalAddress
      */
-    private function applyAddressFields(
-        Address $address,
+    private function toPostalAddress(
         FulfillmentDestinationRequestInterface|PostalAddressInterface $source
-    ): void {
-        $street = array_values(array_filter([$source->getStreetAddress(), $source->getExtendedAddress()]));
-
-        if ($street) {
-            $address->setStreet($street);
-        }
-
-        if ($source->getAddressLocality()) {
-            $address->setCity($source->getAddressLocality());
-        }
-
-        if ($source->getAddressRegion()) {
-            $address->setRegion($source->getAddressRegion());
-        }
-
-        if ($source->getAddressCountry()) {
-            $address->setCountryId($source->getAddressCountry());
-        }
-
-        if ($source->getPostalCode()) {
-            $address->setPostcode($source->getPostalCode());
-        }
-
-        if ($source->getFirstName()) {
-            $address->setFirstname($source->getFirstName());
-        }
-
-        if ($source->getLastName()) {
-            $address->setLastname($source->getLastName());
-        }
-
-        if ($source->getPhoneNumber()) {
-            $address->setTelephone($source->getPhoneNumber());
-        }
+    ): CorePostalAddress {
+        return new CorePostalAddress(
+            streetLine: $source->getStreetAddress(),
+            extendedLine: $source->getExtendedAddress(),
+            locality: $source->getAddressLocality(),
+            region: $source->getAddressRegion(),
+            country: $source->getAddressCountry(),
+            postalCode: $source->getPostalCode(),
+            firstName: $source->getFirstName(),
+            lastName: $source->getLastName(),
+            phone: $source->getPhoneNumber()
+        );
     }
 
     /**
@@ -510,46 +526,6 @@ class CheckoutDataProcessor implements QuoteValidatorInterface
         }
 
         return $destinations[0];
-    }
-
-    /**
-     * @param Quote $cart
-     * @param string $sku
-     * @return Product|null
-     */
-    private function loadProduct(Quote $cart, string $sku): ?Product
-    {
-        try {
-            /** @var Product $product */
-            $product = $this->productRepository->get($sku, false, (int) $cart->getStoreId());
-        } catch (NoSuchEntityException $e) {
-            unset($e);
-            return null;
-        }
-
-        return $product;
-    }
-
-    /**
-     * @param Quote $cart
-     * @param Product $product
-     * @param int $quantity
-     * @param string $path
-     * @return void
-     */
-    private function addProductToCart(Quote $cart, Product $product, int $quantity, string $path): void
-    {
-        try {
-            $result = $cart->addProduct($product, $quantity);
-        } catch (LocalizedException $e) {
-            $this->addMessage($cart, self::CODE_INVALID, $path, $e->getMessage());
-            return;
-        }
-
-        // Quote::addProduct hands back a string instead of an item when the product cannot be configured.
-        if (is_string($result)) {
-            $this->addMessage($cart, self::CODE_INVALID, $path, $result);
-        }
     }
 
     /**

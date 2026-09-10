@@ -12,8 +12,8 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Service\Shopping;
 
-use Magebit\UcpSpec\Api\Shopping\OrderPlatformSchemaInterface;
-use Magebit\UcpSpec\Api\Shopping\OrderPlatformSchemaInterfaceFactory;
+use Magebit\UcpSpec\Api\Shopping\OrderResponsePlatformSchemaInterface;
+use Magebit\UcpSpec\Api\Shopping\OrderResponsePlatformSchemaInterfaceFactory;
 use Magento\Framework\App\CacheInterface;
 use Magento\Framework\HTTP\Client\CurlFactory;
 use Psr\Log\LoggerInterface;
@@ -24,6 +24,11 @@ use Psr\Log\LoggerInterface;
  */
 class AgentProfileParser
 {
+    /**
+     * Capability whose platform-side config carries the URL order events are sent to.
+     */
+    private const ORDER_CAPABILITY = 'dev.ucp.shopping.order';
+
     private const CACHE_PREFIX = 'ucp_agent_profile_';
     private const CACHE_LIFETIME = 3600; // 1 hour
     private const CACHE_TAG = 'ucp_agent_profile';
@@ -33,14 +38,14 @@ class AgentProfileParser
     private const MAX_DATA_URI_BYTES = 262144;
 
     /**
-     * @param OrderPlatformSchemaInterfaceFactory $platformSchemaFactory
+     * @param OrderResponsePlatformSchemaInterfaceFactory $platformSchemaFactory
      * @param CurlFactory $curlFactory
      * @param CacheInterface $cache
      * @param LoggerInterface $logger
      * @param ProfileUrlValidator $urlValidator
      */
     public function __construct(
-        private readonly OrderPlatformSchemaInterfaceFactory $platformSchemaFactory,
+        private readonly OrderResponsePlatformSchemaInterfaceFactory $platformSchemaFactory,
         private readonly CurlFactory $curlFactory,
         private readonly CacheInterface $cache,
         private readonly LoggerInterface $logger,
@@ -52,39 +57,48 @@ class AgentProfileParser
      * Parse UCP agent profile from header
      *
      * @param string|null $ucpAgentHeader
-     * @return OrderPlatformSchemaInterface
+     * @return OrderResponsePlatformSchemaInterface
      */
-    public function parse(?string $ucpAgentHeader = null): OrderPlatformSchemaInterface
+    public function parse(?string $ucpAgentHeader = null): OrderResponsePlatformSchemaInterface
     {
         $platformConfig = $this->platformSchemaFactory->create();
+        $webhookUrl = $this->parseWebhookUrl($ucpAgentHeader);
 
+        // Left unset rather than blank when the profile declares none: the generated field is
+        // required-typed, so writing null would make every later read raise.
+        return $webhookUrl === null ? $platformConfig : $platformConfig->setWebhookUrl($webhookUrl);
+    }
+
+    /**
+     * The agent's own order-event URL, or null when it declares none. Callers want the field far more
+     * often than the schema around it, and the schema's getter raises on an absent value.
+     *
+     * @param string|null $ucpAgentHeader
+     * @return string|null
+     */
+    public function parseWebhookUrl(?string $ucpAgentHeader = null): ?string
+    {
         if (!$ucpAgentHeader) {
-            return $platformConfig;
+            return null;
         }
 
         $profileUri = $this->extractProfileUri($ucpAgentHeader);
+
         if (!$profileUri) {
-            return $platformConfig;
+            return null;
         }
 
         try {
             $profileData = $this->fetchProfileData($profileUri);
-            if (!$profileData) {
-                return $platformConfig;
-            }
 
-            $webhookUrl = $this->extractWebhookUrl($profileData);
-            if (!$webhookUrl) {
-                return $platformConfig;
-            }
-
-            return $platformConfig->setWebhookUrl($webhookUrl);
+            return $profileData ? $this->extractWebhookUrl($profileData) : null;
         } catch (\Exception $e) {
             $this->logger->warning('Failed to fetch or parse agent profile', [
                 'exception' => $e->getMessage(),
                 'uri' => $profileUri
             ]);
-            return $platformConfig;
+
+            return null;
         }
     }
 
@@ -252,22 +266,49 @@ class AgentProfileParser
      */
     private function extractWebhookUrl(array $profileData): ?string
     {
-        if (!isset($profileData['ucp']['capabilities']) || !is_array($profileData['ucp']['capabilities'])) {
+        $ucp = $profileData['ucp'] ?? null;
+        $capabilities = is_array($ucp) ? ($ucp['capabilities'] ?? null) : null;
+        $entries = is_array($capabilities) ? ($capabilities[self::ORDER_CAPABILITY] ?? null) : null;
+
+        if (!is_array($entries)) {
             return null;
         }
 
-        foreach ($profileData['ucp']['capabilities'] as $capability) {
-            if (!is_array($capability)) {
-                continue;
-            }
+        // The registry is keyed by reverse-domain name and each value is a list of entries, so the name
+        // is the key and no entry carries one. A platform may declare several entries for one capability.
+        foreach ($entries as $entry) {
+            if (is_array($entry) && isset($entry['config']['webhook_url'])) {
+                $url = $entry['config']['webhook_url'];
 
-            if (($capability['name'] ?? null) === 'dev.ucp.shopping.order' &&
-                isset($capability['config']['webhook_url'])
-            ) {
-                return $capability['config']['webhook_url'];
+                if (is_string($url) && $url !== '' && $this->isCallableWebhookUrl($url)) {
+                    return $url;
+                }
             }
         }
 
         return null;
+    }
+
+    /**
+     * The store posts to this address later, so it needs the same guard as the profile URL or it can
+     * point back inside our own network. A bad one is dropped, not fatal: the agent can still shop.
+     *
+     * @param string $url
+     * @return bool
+     */
+    private function isCallableWebhookUrl(string $url): bool
+    {
+        try {
+            $this->urlValidator->assertFetchable($url);
+
+            return true;
+        } catch (\Throwable $e) {
+            $this->logger->warning('Dropped an agent webhook URL the store is not allowed to call', [
+                'exception' => $e->getMessage(),
+                'url' => $url
+            ]);
+
+            return false;
+        }
     }
 }

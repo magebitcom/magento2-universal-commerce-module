@@ -14,9 +14,17 @@ namespace Magebit\UniversalCommerce\Api\Service\Shopping;
 use Magebit\UcpSpec\Api\Shopping\CheckoutUpdateRequestInterface as BaseRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\FulfillmentRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\DiscountResponseDiscountsObjectInterface;
+use Magebit\UniversalCommerce\Api\Service\Shopping\BuyerWithConsentInterface;
 
 interface CheckoutUpdateRequestInterface extends BaseRequestInterface
 {
+    /**
+     * Narrowed so the buyer arrives carrying the consent the `buyer_consent` capability adds to it.
+     *
+     * @return \Magebit\UniversalCommerce\Api\Service\Shopping\BuyerWithConsentInterface|null
+     */
+    public function getBuyer(): ?BuyerWithConsentInterface;
+
     /**
      * @return \Magebit\UcpSpec\Api\Shopping\Types\FulfillmentRequestInterface|null
      */

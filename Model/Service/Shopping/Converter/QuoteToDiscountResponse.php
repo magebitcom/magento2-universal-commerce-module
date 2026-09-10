@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Service\Shopping\Converter;
 
+use Magebit\AgenticCore\Model\Money\MinorUnits;
 use Magebit\UcpSpec\Api\Shopping\DiscountResponseAppliedDiscountInterface;
 use Magebit\UcpSpec\Api\Shopping\DiscountResponseAppliedDiscountInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\DiscountResponseDiscountsObjectInterface;
@@ -27,12 +28,12 @@ class QuoteToDiscountResponse
     /**
      * @param DiscountResponseDiscountsObjectInterfaceFactory $discountsObjectFactory
      * @param DiscountResponseAppliedDiscountInterfaceFactory $appliedDiscountFactory
-     * @param PriceConverter $priceConverter
+     * @param MinorUnits $minorUnits
      */
     public function __construct(
         protected readonly DiscountResponseDiscountsObjectInterfaceFactory $discountsObjectFactory,
         protected readonly DiscountResponseAppliedDiscountInterfaceFactory $appliedDiscountFactory,
-        protected readonly PriceConverter $priceConverter,
+        protected readonly MinorUnits $minorUnits,
     ) {
     }
 
@@ -91,7 +92,7 @@ class QuoteToDiscountResponse
         /** @var DiscountResponseAppliedDiscountInterface $applied */
         $applied = $this->appliedDiscountFactory->create();
         $applied->setTitle((string)($description ?: $couponCode ?: self::DEFAULT_TITLE));
-        $applied->setAmount($this->priceConverter->convert($amount, $currencyCode));
+        $applied->setAmount($this->minorUnits->convert($amount, $currencyCode));
         $applied->setAutomatic($couponCode === null);
 
         if ($couponCode !== null) {

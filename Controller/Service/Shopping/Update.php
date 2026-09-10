@@ -18,12 +18,14 @@ use Magebit\UniversalCommerce\Controller\ApiController;
 use Magento\Framework\Controller\Result\Json as ResultJson;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\App\RequestInterface;
-use Magebit\UniversalCommerce\Model\Validation\RequestValidator;
+use Magebit\AgenticCore\Model\Validation\RequestValidator;
 use Magebit\UniversalCommerce\Api\Service\Shopping\RestHandlerInterface;
-use Magebit\UniversalCommerce\Model\Validation\ValidationResult;
-use Magebit\UniversalCommerce\Model\RequestClassBuilder;
+use Magebit\AgenticCore\Model\Validation\ValidationResult;
+use Magebit\AgenticCore\Model\Request\Hydrator;
 use Magebit\UniversalCommerce\Model\Config;
 use Magebit\UniversalCommerce\Model\IdempotencyHandler;
+use Magebit\UniversalCommerce\Model\Protocol\UndeclaredExtensions;
+use Magebit\UniversalCommerce\Model\Protocol\VersionNegotiator;
 use Psr\Log\LoggerInterface;
 use JsonSerializable;
 use Magento\Framework\Exception\LocalizedException;
@@ -34,11 +36,13 @@ class Update extends ApiController
         JsonFactory $resultJsonFactory,
         RequestInterface $request,
         RequestValidator $requestValidator,
-        RequestClassBuilder $requestClassBuilder,
+        Hydrator $hydrator,
         Config $config,
         MessageErrorInterfaceFactory $messageFactory,
         IdempotencyHandler $idempotencyHandler,
         LoggerInterface $logger,
+        VersionNegotiator $versionNegotiator,
+        private readonly UndeclaredExtensions $undeclaredExtensions,
         protected readonly CheckoutUpdateRequestInterfaceFactory $checkoutUpdateRequestFactory,
         protected readonly RestHandlerInterface $restHandler
     ) {
@@ -46,11 +50,12 @@ class Update extends ApiController
             $resultJsonFactory,
             $request,
             $requestValidator,
-            $requestClassBuilder,
+            $hydrator,
             $config,
             $messageFactory,
             $idempotencyHandler,
-            $logger
+            $logger,
+            $versionNegotiator
         );
     }
 
@@ -63,13 +68,7 @@ class Update extends ApiController
         $checkoutId = $this->getHttpRequest()->getParam('checkout_id');
 
         if (!$checkoutId) {
-            return $this->makeErrorResponse('requires_escalation', [
-                $this->messageFactory->create(['data' => [
-                    'type' => 'error',
-                    'code' => 'invalid_request',
-                    'message' => 'Checkout ID is required',
-                ]])
-            ], 400);
+            return $this->missingCheckoutId();
         }
 
         $checkoutUpdateRequest = $this->getAndValidateRequest(
@@ -89,7 +88,9 @@ class Update extends ApiController
             $checkoutResponse = $this->restHandler->updateCheckout($checkoutId, $checkoutUpdateRequest);
 
             if ($checkoutResponse instanceof JsonSerializable) {
-                $this->idempotencyHandler->storeResponse($this->getHttpRequest(), $checkoutResponse, 201);
+                $this->undeclaredExtensions->annotate($checkoutResponse, $this->decodedBody());
+
+                $this->idempotencyHandler->storeResponse($this->getHttpRequest(), $checkoutResponse, 200);
 
                 return $this->makeJsonResponse($checkoutResponse);
             }

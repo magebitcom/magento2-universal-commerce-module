@@ -12,9 +12,11 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Service\Shopping\Converter;
 
+use Magebit\AgenticCore\Model\Money\MinorUnits;
 use Magebit\UcpSpec\Api\Shopping\Types\LineItemResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\ItemResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterface;
+use Magebit\UniversalCommerce\Api\Data\TotalTypeInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\LineItemResponseInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\ItemResponseInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\Types\TotalResponseInterfaceFactory;
@@ -29,7 +31,7 @@ class QuoteItemToLineItemResponse
         protected readonly ItemResponseInterfaceFactory $itemResponseFactory,
         protected readonly TotalResponseInterfaceFactory $totalResponseFactory,
         protected readonly ImageHelper $imageHelper,
-        protected readonly PriceConverter $priceConverter
+        protected readonly MinorUnits $minorUnits
     ) {
     }
 
@@ -62,7 +64,7 @@ class QuoteItemToLineItemResponse
         $item = $this->itemResponseFactory->create();
         $item->setId($product->getSku());
         $item->setTitle($product->getName());
-        $item->setPrice($this->priceConverter->convert(
+        $item->setPrice($this->minorUnits->convert(
             (float) $quoteItem->getPrice(),
             $this->getCurrencyCode($quoteItem)
         ));
@@ -92,18 +94,19 @@ class QuoteItemToLineItemResponse
         $subtotal = (float) $quoteItem->getRowTotal();
         if ($subtotal > 0) {
             $total = $this->totalResponseFactory->create();
-            $total->setType(TotalResponseInterface::TYPE_SUBTOTAL);
-            $total->setAmount($this->priceConverter->convert($subtotal, $currencyCode));
+            $total->setType(TotalTypeInterface::TYPE_SUBTOTAL);
+            $total->setAmount($this->minorUnits->convert($subtotal, $currencyCode));
             $total->setDisplayText('Subtotal');
             $totals[] = $total;
         }
 
-        // Discount (item-level discount)
-        $discountAmount = (float) $quoteItem->getDiscountAmount();
+        // Item-level discount, emitted negative: the spec constrains `items_discount` to
+        // `exclusiveMaximum: 0`, so the sign is part of the value rather than presentation.
+        $discountAmount = abs((float) $quoteItem->getDiscountAmount());
         if ($discountAmount > 0) {
             $total = $this->totalResponseFactory->create();
-            $total->setType(TotalResponseInterface::TYPE_ITEMS_DISCOUNT);
-            $total->setAmount($this->priceConverter->convert($discountAmount, $currencyCode));
+            $total->setType(TotalTypeInterface::TYPE_ITEMS_DISCOUNT);
+            $total->setAmount($this->minorUnits->convert(-$discountAmount, $currencyCode));
             $total->setDisplayText('Discount');
             $totals[] = $total;
         }
@@ -111,8 +114,8 @@ class QuoteItemToLineItemResponse
         // Total (including tax)
         $rowTotal = (float) $quoteItem->getRowTotalInclTax();
         $total = $this->totalResponseFactory->create();
-        $total->setType(TotalResponseInterface::TYPE_TOTAL);
-        $total->setAmount($this->priceConverter->convert($rowTotal, $currencyCode));
+        $total->setType(TotalTypeInterface::TYPE_TOTAL);
+        $total->setAmount($this->minorUnits->convert($rowTotal, $currencyCode));
         $total->setDisplayText('Total');
         $totals[] = $total;
 

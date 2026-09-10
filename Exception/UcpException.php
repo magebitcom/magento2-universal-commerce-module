@@ -14,20 +14,22 @@ namespace Magebit\UniversalCommerce\Exception;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Phrase;
 
+/**
+ * A failure the boundary can report as the spec's error response: the error code names the failure and
+ * the HTTP status carries the transport tier. Named `errorCode` because `Exception::getCode()` is final
+ * and typed int.
+ */
 class UcpException extends LocalizedException
 {
     public function __construct(
         Phrase $phrase,
-        public readonly string $type = 'error',
-        public readonly string $typeCode = 'requires_escalation',
+        public readonly string $errorCode = 'server_error',
         public readonly int $statusCode = 500
     ) {
         parent::__construct($phrase);
     }
 
     /**
-     * Get status code
-     *
      * @return int
      */
     public function getStatusCode(): int
@@ -36,22 +38,10 @@ class UcpException extends LocalizedException
     }
 
     /**
-     * Get type code
-     *
      * @return string
      */
-    public function getTypeCode(): string
+    public function getErrorCode(): string
     {
-        return $this->typeCode;
-    }
-
-    /**
-     * Get type
-     *
-     * @return string
-     */
-    public function getType(): string
-    {
-        return $this->type;
+        return $this->errorCode;
     }
 }

@@ -1,0 +1,133 @@
+{
+    "ucp": {
+        "version": "2026-04-08",
+        "capabilities": {
+            "dev.ucp.shopping.cart": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/cart",
+                    "schema": "https://ucp.dev/schemas/shopping/cart.json"
+                }
+            ],
+            "dev.ucp.shopping.checkout": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/checkout",
+                    "schema": "https://ucp.dev/schemas/shopping/checkout.json"
+                }
+            ],
+            "dev.ucp.shopping.discount": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specification/discount",
+                    "schema": "https://ucp.dev/schemas/shopping/discount.json",
+                    "extends": "dev.ucp.shopping.checkout"
+                }
+            ],
+            "dev.ucp.shopping.fulfillment": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/fulfillment",
+                    "schema": "https://ucp.dev/schemas/shopping/fulfillment.json",
+                    "extends": "dev.ucp.shopping.checkout"
+                }
+            ],
+            "dev.ucp.shopping.order": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/order",
+                    "schema": "https://ucp.dev/schemas/shopping/order.json"
+                }
+            ]
+        }
+    },
+    "id": "checkout_session_placeholder_0001",
+    "line_items": [
+        {
+            "id": "id-7ed8f0f3",
+            "quantity": 5,
+            "item": {
+                "id": "ucp-conformance-simple",
+                "title": "UCP Conformance Simple Product",
+                "price": 2000,
+                "image_url": "https://merchant.example/static/versionSTATIC/frontend/Magento/luma/en_US/Magento_Catalog/images/product/placeholder/image.jpg"
+            },
+            "totals": [
+                {
+                    "type": "subtotal",
+                    "amount": 10000,
+                    "display_text": "Subtotal"
+                },
+                {
+                    "type": "total",
+                    "amount": 10000,
+                    "display_text": "Total"
+                }
+            ]
+        }
+    ],
+    "currency": "USD",
+    "totals": [
+        {
+            "type": "subtotal",
+            "display_text": "Subtotal",
+            "amount": 10000
+        },
+        {
+            "type": "fulfillment",
+            "display_text": "Shipping & Handling",
+            "amount": 0
+        },
+        {
+            "type": "tax",
+            "display_text": "Tax",
+            "amount": 0
+        },
+        {
+            "type": "total",
+            "display_text": "Grand Total",
+            "amount": 10000
+        }
+    ],
+    "links": [],
+    "continue_url": "https://merchant.example/ucp/checkout/resume/id/6svLdhMURfwdeTUHSkixD8a5ZMnySHHs",
+    "expires_at": "2026-01-01T00:00:00+00:00",
+    "messages": [
+        {
+            "type": "info",
+            "code": "missing",
+            "content": "First name is required",
+            "path": "$.buyer.first_name"
+        },
+        {
+            "type": "info",
+            "code": "missing",
+            "content": "Last name is required",
+            "path": "$.buyer.last_name"
+        },
+        {
+            "type": "info",
+            "code": "missing",
+            "content": "Telephone is required",
+            "path": "$.buyer.phone_number"
+        },
+        {
+            "type": "info",
+            "code": "missing",
+            "content": "City is required",
+            "path": "$.fulfillment.methods[0].destination.address_locality"
+        },
+        {
+            "type": "info",
+            "code": "missing",
+            "content": "Country is required",
+            "path": "$.fulfillment.methods[0].destination.address_country"
+        },
+        {
+            "type": "info",
+            "code": "missing",
+            "content": "Postcode is required",
+            "path": "$.fulfillment.methods[0].destination.postal_code"
+        }
+    ]
+}

@@ -1,0 +1,114 @@
+{
+    "ucp": {
+        "version": "2026-04-08",
+        "status": "success",
+        "capabilities": {
+            "dev.ucp.shopping.checkout": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/checkout",
+                    "schema": "https://ucp.dev/schemas/shopping/checkout.json"
+                }
+            ],
+            "dev.ucp.shopping.discount": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specification/discount",
+                    "schema": "https://ucp.dev/schemas/shopping/discount.json",
+                    "extends": "dev.ucp.shopping.checkout"
+                }
+            ],
+            "dev.ucp.shopping.fulfillment": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/fulfillment",
+                    "schema": "https://ucp.dev/schemas/shopping/fulfillment.json",
+                    "extends": "dev.ucp.shopping.checkout"
+                }
+            ],
+            "dev.ucp.shopping.order": [
+                {
+                    "version": "2026-04-08",
+                    "spec": "https://ucp.dev/specs/shopping/order",
+                    "schema": "https://ucp.dev/schemas/shopping/order.json"
+                }
+            ]
+        }
+    },
+    "id": "id-8f6482bf",
+    "checkout_id": "checkout_session_placeholder_0001",
+    "permalink_url": "https://merchant.example/sales/order/view/order_id/1000",
+    "line_items": [
+        {
+            "id": "id-d80eae6e",
+            "item": {
+                "id": "ucp-conformance-simple",
+                "title": "UCP Conformance Simple Product",
+                "price": 2000,
+                "image_url": "https://merchant.example/static/versionSTATIC/frontend/Magento/luma/en_US/Magento_Catalog/images/product/placeholder/image.jpg"
+            },
+            "quantity": {
+                "original": 2,
+                "total": 2,
+                "fulfilled": 0
+            },
+            "totals": [
+                {
+                    "type": "subtotal",
+                    "display_text": "Subtotal",
+                    "amount": 4000
+                },
+                {
+                    "type": "total",
+                    "display_text": "Total",
+                    "amount": 4000
+                }
+            ],
+            "status": "processing"
+        }
+    ],
+    "fulfillment": {
+        "expectations": [
+            {
+                "id": "package",
+                "line_items": [
+                    {
+                        "id": "id-d80eae6e",
+                        "quantity": 2
+                    }
+                ],
+                "method_type": "shipping",
+                "destination": {
+                    "street_address": "1 Infinite Loop",
+                    "address_locality": "Cupertino",
+                    "address_region": "California",
+                    "address_country": "US",
+                    "postal_code": "95014",
+                    "first_name": "Ada",
+                    "last_name": "Lovelace",
+                    "phone_number": "+15555550123"
+                },
+                "description": "Flat Rate - Fixed"
+            }
+        ],
+        "events": []
+    },
+    "currency": "USD",
+    "totals": [
+        {
+            "type": "subtotal",
+            "display_text": "Subtotal",
+            "amount": 4000
+        },
+        {
+            "type": "fulfillment",
+            "display_text": "Flat Rate - Fixed",
+            "amount": 1000
+        },
+        {
+            "type": "total",
+            "display_text": "Grand Total",
+            "amount": 5000
+        }
+    ]
+}
