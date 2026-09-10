@@ -12,7 +12,6 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Service\Shopping;
 
-use Magebit\AgenticCore\Model\Stock\Availability;
 use Magebit\UcpSpec\Api\Shopping\CatalogLookupGetProductResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\CatalogLookupDetailProductInterface;
 use Magebit\UcpSpec\Api\Shopping\CatalogLookupDetailProductInterfaceFactory;
@@ -41,6 +40,7 @@ use Magento\Catalog\Model\Product\Attribute\Source\Status;
 use Magento\Catalog\Model\Product\Visibility;
 use Magento\Catalog\Model\ResourceModel\Product\Collection as ProductCollection;
 use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
+use Magento\CatalogInventory\Helper\Stock as StockHelper;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product\Collection as ChildCollection;
 use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product\CollectionFactory as ChildCollectionFactory;
@@ -99,7 +99,7 @@ class CatalogHandler implements CatalogHandlerInterface
      * @param Visibility $visibility
      * @param InputCorrelationInterfaceFactory $correlationFactory
      * @param ChildCollectionFactory $childCollectionFactory
-     * @param Availability $stock
+     * @param StockHelper $stockHelper
      * @param MetadataPool $metadataPool
      */
     public function __construct(
@@ -117,7 +117,7 @@ class CatalogHandler implements CatalogHandlerInterface
         private readonly Visibility $visibility,
         private readonly InputCorrelationInterfaceFactory $correlationFactory,
         private readonly ChildCollectionFactory $childCollectionFactory,
-        private readonly Availability $stock,
+        private readonly StockHelper $stockHelper,
         private readonly MetadataPool $metadataPool
     ) {
     }
@@ -157,7 +157,7 @@ class CatalogHandler implements CatalogHandlerInterface
         if ($ids !== []) {
             $collection->addIdFilter($ids);
             $collection->getSelect()->order('e.entity_id ' . Select::SQL_ASC);
-            $this->stock->prefetch($collection);
+            $this->readStock($collection);
 
             foreach ($collection as $product) {
                 if ($product instanceof MagentoProduct) {
@@ -279,7 +279,7 @@ class CatalogHandler implements CatalogHandlerInterface
 
         $collection = $this->visibleProducts();
         $collection->addAttributeToFilter('sku', ['in' => $skus]);
-        $this->stock->prefetch($collection);
+        $this->readStock($collection);
 
         $found = [];
 
@@ -352,7 +352,7 @@ class CatalogHandler implements CatalogHandlerInterface
         }
 
         $collection = $this->childCollection($parents);
-        $this->stock->prefetch($collection);
+        $this->readStock($collection);
 
         $children = [];
 
@@ -365,6 +365,27 @@ class CatalogHandler implements CatalogHandlerInterface
         }
 
         return $children;
+    }
+
+    /**
+     * Reads the stock of everything on a page with one call. Asking product by product cost two
+     * queries each, so a page of products with variants ran into the hundreds.
+     *
+     * This belongs in the base module beside the rest of the stock reading, and moves there once that
+     * module has a release the modules can require.
+     *
+     * @param ProductCollection $products
+     * @return void
+     */
+    private function readStock(ProductCollection $products): void
+    {
+        if ($products->getItems() === []) {
+            return;
+        }
+
+        // Marked deprecated in favour of Multi Source Inventory, but it is the only batch call the
+        // stock API this module already uses has, and it gives the same answer as asking one at a time.
+        $this->stockHelper->addStockStatusToProducts($products);
     }
 
     /**

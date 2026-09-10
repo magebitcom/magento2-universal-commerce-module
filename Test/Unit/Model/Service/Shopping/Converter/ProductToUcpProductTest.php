@@ -134,6 +134,63 @@ class ProductToUcpProductTest extends TestCase
     }
 
     /**
+     * A page reads everyone's stock in one go and leaves the answer on the product, so the converter
+     * must use that rather than asking again.
+     *
+     * @return void
+     */
+    public function testStockAlreadyReadForThePageIsUsedAsIs(): void
+    {
+        $asked = false;
+        $product = $this->productCarryingStock(false);
+
+        $converter = $this->converter(true, function () use (&$asked): bool {
+            $asked = true;
+
+            return true;
+        });
+
+        $availability = $converter->convert($product, 'USD')->getVariants()[0]->getAvailability();
+
+        $this->assertFalse($availability->getAvailable());
+        $this->assertFalse($asked);
+    }
+
+    /**
+     * @return void
+     */
+    public function testAProductCarryingStockIsReportedInStock(): void
+    {
+        $converter = $this->converter();
+        $availability = $converter->convert($this->productCarryingStock(true), 'USD')
+            ->getVariants()[0]
+            ->getAvailability();
+
+        $this->assertTrue($availability->getAvailable());
+    }
+
+    /**
+     * @param bool $isSalable
+     * @return MagentoProduct
+     */
+    private function productCarryingStock(bool $isSalable): MagentoProduct
+    {
+        $product = $this->getMockBuilder(MagentoProduct::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getSku', 'getName', 'getTypeId', 'getFinalPrice', 'getData'])
+            ->getMock();
+        $product->method('getSku')->willReturn('ucp-simple');
+        $product->method('getName')->willReturn('A Simple Product');
+        $product->method('getTypeId')->willReturn('simple');
+        $product->method('getFinalPrice')->willReturn(20.0);
+        $product->method('getData')->willReturnCallback(
+            static fn (string $key): mixed => $key === 'is_salable' ? $isSalable : null
+        );
+
+        return $product;
+    }
+
+    /**
      * @param bool $isSalable
      * @param string|null $description
      * @return ProductInterface
@@ -160,12 +217,18 @@ class ProductToUcpProductTest extends TestCase
 
     /**
      * @param bool $isSalable
+     * @param callable|null $onAsk Called instead, when the test wants to know whether stock was asked
      * @return ProductToUcpProduct
      */
-    private function converter(bool $isSalable = true): ProductToUcpProduct
+    private function converter(bool $isSalable = true, ?callable $onAsk = null): ProductToUcpProduct
     {
         $stock = $this->createMock(Availability::class);
-        $stock->method('isSalable')->willReturn($isSalable);
+
+        if ($onAsk === null) {
+            $stock->method('isSalable')->willReturn($isSalable);
+        } else {
+            $stock->method('isSalable')->willReturnCallback($onAsk);
+        }
 
         return new ProductToUcpProduct(
             $this->factoryFor(ProductInterfaceFactory::class, Product::class),

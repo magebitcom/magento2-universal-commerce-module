@@ -12,7 +12,6 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Test\Unit\Model\Service\Shopping;
 
-use Magebit\AgenticCore\Model\Stock\Availability;
 use Magebit\UcpSpec\Api\Shopping\CatalogLookupDetailProductInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\CatalogLookupGetProductResponseInterfaceFactory;
 use Magebit\UcpSpec\Api\Shopping\CatalogLookupLookupResponseInterfaceFactory;
@@ -40,6 +39,7 @@ use Magento\Catalog\Model\Product\Attribute\Source\Status;
 use Magento\Catalog\Model\Product\Visibility;
 use Magento\Catalog\Model\ResourceModel\Product\Collection as ProductCollection;
 use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
+use Magento\CatalogInventory\Helper\Stock as StockHelper;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
 use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product\Collection as ChildCollection;
 use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product\CollectionFactory as ChildCollectionFactory;
@@ -512,7 +512,7 @@ class CatalogHandlerTest extends TestCase
             $visibility,
             $this->factoryFor(InputCorrelationInterfaceFactory::class, InputCorrelation::class),
             $this->childCollectionFactory(),
-            $this->stock(),
+            $this->stockHelper(),
             $this->metadataPool()
         );
     }
@@ -560,16 +560,16 @@ class CatalogHandlerTest extends TestCase
     }
 
     /**
-     * @return Availability
+     * @return StockHelper
      */
-    private function stock(): Availability
+    private function stockHelper(): StockHelper
     {
-        $stock = $this->createMock(Availability::class);
-        $stock->method('prefetch')->willReturnCallback(function (): void {
+        $helper = $this->createMock(StockHelper::class);
+        $helper->method('addStockStatusToProducts')->willReturnCallback(function (): void {
             $this->stockPrefetches++;
         });
 
-        return $stock;
+        return $helper;
     }
 
     /**
@@ -631,6 +631,7 @@ class CatalogHandlerTest extends TestCase
                 'getConnection',
                 'getAllIds',
                 'getIterator',
+                'getItems',
                 'addIdFilter',
                 'addUrlRewrite',
             ])
@@ -653,6 +654,7 @@ class CatalogHandlerTest extends TestCase
         $collection->method('getIterator')->willReturnCallback(
             fn (): \ArrayIterator => new \ArrayIterator($this->items)
         );
+        $collection->method('getItems')->willReturnCallback(fn (): array => $this->items);
         $collection->method('addAttributeToFilter')->willReturnCallback(
             function (mixed $attribute, mixed $condition = null) use ($collection): ProductCollection {
                 $this->filters[] = [$attribute, $condition];
