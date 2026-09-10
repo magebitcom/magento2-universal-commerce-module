@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Test\Unit\Model\Validation;
 
+use Magebit\UcpSpec\Api\Shopping\OrderUpdateRequestInterface;
 use Magebit\UcpSpec\Api\Shopping\Types\AdjustmentInterface;
 use Magebit\AgenticCore\Model\Validation\ConstraintChecker;
 use Magebit\AgenticCore\Model\Validation\RequestValidator;
@@ -98,6 +99,50 @@ class RequestValidatorTest extends TestCase
 
         $this->assertFalse($result->isValid());
         $this->assertArrayHasKey('totals', $result->getErrors());
+    }
+
+    /**
+     * A refund-only update still has to describe the whole order, fulfillment included, so the handler
+     * behind it never sees a body without one.
+     *
+     * @return void
+     */
+    public function testAnOrderUpdateWithoutFulfillmentIsRejected(): void
+    {
+        $data = $this->orderUpdate();
+        unset($data['fulfillment']);
+
+        $result = $this->validator->validate($data, OrderUpdateRequestInterface::class);
+
+        $this->assertFalse($result->isValid());
+        $this->assertArrayHasKey('fulfillment', $result->getErrors());
+    }
+
+    /**
+     * @return void
+     */
+    public function testAnOrderUpdateCarryingFulfillmentPasses(): void
+    {
+        $result = $this->validator->validate($this->orderUpdate(), OrderUpdateRequestInterface::class);
+
+        $this->assertTrue($result->isValid());
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function orderUpdate(): array
+    {
+        return [
+            'ucp' => ['version' => '2026-01-23'],
+            'id' => 'checkout_1',
+            'checkout_id' => 'checkout_1',
+            'permalink_url' => 'https://example.com/orders/checkout_1',
+            'line_items' => [],
+            'fulfillment' => ['events' => []],
+            'totals' => [],
+            'adjustments' => [$this->adjustment('pending')],
+        ];
     }
 
     /**

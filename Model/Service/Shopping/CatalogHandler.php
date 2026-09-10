@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace Magebit\UniversalCommerce\Model\Service\Shopping;
 
+use Magebit\AgenticCore\Model\Stock\Availability;
 use Magebit\UcpSpec\Api\Shopping\CatalogLookupGetProductResponseInterface;
 use Magebit\UcpSpec\Api\Shopping\CatalogLookupDetailProductInterface;
 use Magebit\UcpSpec\Api\Shopping\CatalogLookupDetailProductInterfaceFactory;
@@ -33,6 +34,7 @@ use Magebit\UniversalCommerce\Api\UniversalCommerceProtocolInterface;
 use Magebit\UniversalCommerce\Exception\UcpException;
 use Magebit\UniversalCommerce\Model\Discovery\ServiceRegistry;
 use Magebit\UniversalCommerce\Model\Service\Shopping\Converter\ProductToUcpProduct;
+use Magento\Catalog\Api\Data\ProductInterface as CatalogProductInterface;
 use Magento\Catalog\Helper\Image as ImageHelper;
 use Magento\Catalog\Model\Product as MagentoProduct;
 use Magento\Catalog\Model\Product\Attribute\Source\Status;
@@ -40,8 +42,11 @@ use Magento\Catalog\Model\Product\Visibility;
 use Magento\Catalog\Model\ResourceModel\Product\Collection as ProductCollection;
 use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
+use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product\Collection as ChildCollection;
+use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product\CollectionFactory as ChildCollectionFactory;
 use Magento\Framework\DB\Select;
 use Magento\Framework\DB\Sql\Expression;
+use Magento\Framework\EntityManager\MetadataPool;
 use Magento\Store\Model\Store;
 use Magento\Store\Model\StoreManagerInterface;
 
@@ -93,6 +98,9 @@ class CatalogHandler implements CatalogHandlerInterface
      * @param ImageHelper $imageHelper
      * @param Visibility $visibility
      * @param InputCorrelationInterfaceFactory $correlationFactory
+     * @param ChildCollectionFactory $childCollectionFactory
+     * @param Availability $stock
+     * @param MetadataPool $metadataPool
      */
     public function __construct(
         private readonly CollectionFactory $collectionFactory,
@@ -107,7 +115,10 @@ class CatalogHandler implements CatalogHandlerInterface
         private readonly StoreManagerInterface $storeManager,
         private readonly ImageHelper $imageHelper,
         private readonly Visibility $visibility,
-        private readonly InputCorrelationInterfaceFactory $correlationFactory
+        private readonly InputCorrelationInterfaceFactory $correlationFactory,
+        private readonly ChildCollectionFactory $childCollectionFactory,
+        private readonly Availability $stock,
+        private readonly MetadataPool $metadataPool
     ) {
     }
 
@@ -141,18 +152,21 @@ class CatalogHandler implements CatalogHandlerInterface
         // full scan of the catalogue per request, and the cursor offset can be any number.
         $ids = $this->pageIds($collection, $pageSize, $offset);
 
-        $products = [];
+        $found = [];
 
         if ($ids !== []) {
             $collection->addIdFilter($ids);
             $collection->getSelect()->order('e.entity_id ' . Select::SQL_ASC);
+            $this->stock->prefetch($collection);
 
             foreach ($collection as $product) {
                 if ($product instanceof MagentoProduct) {
-                    $products[] = $this->convert($product);
+                    $found[] = $product;
                 }
             }
         }
+
+        $products = $this->convertAll($found);
 
         /** @var CatalogSearchSearchResponseInterface $response */
         $response = $this->searchResponseFactory->create();
@@ -176,7 +190,8 @@ class CatalogHandler implements CatalogHandlerInterface
         );
 
         $found = $this->findBySkus($skus);
-        $products = [];
+        $matched = [];
+        $requested = [];
 
         foreach ($skus as $sku) {
             $product = $found[strtolower($sku)] ?? null;
@@ -184,8 +199,15 @@ class CatalogHandler implements CatalogHandlerInterface
             // An id that matches nothing is left out rather than failing the batch: an agent asking about
             // several products should still learn about the ones that exist.
             if ($product !== null) {
-                $products[] = $this->correlate($this->convert($product), $sku);
+                $matched[] = $product;
+                $requested[] = $sku;
             }
+        }
+
+        $products = [];
+
+        foreach ($this->convertAll($matched) as $index => $converted) {
+            $products[] = $this->correlate($converted, $requested[$index]);
         }
 
         /** @var CatalogLookupLookupResponseInterface $response */
@@ -211,7 +233,7 @@ class CatalogHandler implements CatalogHandlerInterface
         /** @var CatalogLookupGetProductResponseInterface $response */
         $response = $this->productResponseFactory->create();
         $response->setUcp($this->ucp());
-        $response->setProduct($this->asDetail($this->convert($product)));
+        $response->setProduct($this->asDetail($this->convertAll([$product])[0]));
 
         return $response;
     }
@@ -257,6 +279,7 @@ class CatalogHandler implements CatalogHandlerInterface
 
         $collection = $this->visibleProducts();
         $collection->addAttributeToFilter('sku', ['in' => $skus]);
+        $this->stock->prefetch($collection);
 
         $found = [];
 
@@ -284,45 +307,100 @@ class CatalogHandler implements CatalogHandlerInterface
     }
 
     /**
-     * @param MagentoProduct $product
-     * @return ProductInterface
+     * Converts a whole page in one go. The variants behind it and the stock behind those are read once
+     * for the page; reading them per product cost a query for every parent and two for every variant.
+     *
+     * @param MagentoProduct[] $products
+     * @return ProductInterface[]
      */
-    private function convert(MagentoProduct $product): ProductInterface
+    private function convertAll(array $products): array
     {
-        return $this->productConverter->convert(
-            $product,
-            $this->currencyCode(),
-            $this->childrenOf($product),
-            $this->urlOf($product),
-            $this->imageOf($product)
-        );
+        $children = $this->childrenFor($products);
+        $currencyCode = $this->currencyCode();
+        $linkField = $this->metadataPool->getMetadata(CatalogProductInterface::class)->getLinkField();
+
+        $converted = [];
+
+        foreach ($products as $product) {
+            $converted[] = $this->productConverter->convert(
+                $product,
+                $currencyCode,
+                $children[$this->idOf($product->getData($linkField))] ?? [],
+                $this->urlOf($product),
+                $this->imageOf($product)
+            );
+        }
+
+        return $converted;
     }
 
     /**
-     * @param MagentoProduct $product
-     * @return MagentoProduct[]
+     * Loads the variants of every configurable product on the page with one query.
+     *
+     * @param MagentoProduct[] $products
+     * @return array<int, MagentoProduct[]> Variants, keyed by the product they belong to
      */
-    private function childrenOf(MagentoProduct $product): array
+    private function childrenFor(array $products): array
     {
-        if ($product->getTypeId() !== Configurable::TYPE_CODE) {
+        $parents = array_filter(
+            $products,
+            static fn (MagentoProduct $product): bool => $product->getTypeId() === Configurable::TYPE_CODE
+        );
+
+        if ($parents === []) {
             return [];
         }
 
-        $type = $product->getTypeInstance();
-
-        if (!$type instanceof Configurable) {
-            return [];
-        }
+        $collection = $this->childCollection($parents);
+        $this->stock->prefetch($collection);
 
         $children = [];
 
-        foreach ($type->getUsedProducts($product) as $child) {
-            if ($child instanceof MagentoProduct) {
-                $children[] = $child;
+        foreach ($collection->getItems() as $child) {
+            $parentId = $this->idOf($child->getData('parent_id'));
+
+            if ($child instanceof MagentoProduct && $parentId !== 0) {
+                $children[$parentId][] = $child;
             }
         }
 
         return $children;
+    }
+
+    /**
+     * @param mixed $value
+     * @return int A product id, or zero when there is none to read
+     */
+    private function idOf(mixed $value): int
+    {
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    /**
+     * Every variant of every given product, in the shape Magento loads variants one parent at a time.
+     *
+     * @param MagentoProduct[] $parents
+     * @return ChildCollection
+     */
+    private function childCollection(array $parents): ChildCollection
+    {
+        $storeId = (int) $this->storeManager->getStore()->getId();
+
+        /** @var ChildCollection $collection */
+        $collection = $this->childCollectionFactory->create();
+
+        foreach ($parents as $parent) {
+            $collection->setProductFilter($parent);
+        }
+
+        // Description is left out on purpose: a variant would repeat its parent's whole description,
+        // which says nothing new and makes the answer much bigger.
+        $collection->addAttributeToSelect(['name', 'price', 'special_price', 'status', 'visibility']);
+        $collection->addFilterByRequiredOptions();
+        $collection->addStoreFilter($storeId);
+        $collection->setStoreId($storeId);
+
+        return $collection;
     }
 
     /**
@@ -402,6 +480,10 @@ class CatalogHandler implements CatalogHandlerInterface
         $collection->addAttributeToFilter('status', ['eq' => Status::STATUS_ENABLED]);
         $collection->setVisibility($this->visibility->getVisibleInSiteIds());
         $collection->addStoreFilter((int) $this->storeManager->getStore()->getId());
+
+        // Reads the whole page's storefront addresses at once. Asking each product for its own url
+        // meant another query per product.
+        $collection->addUrlRewrite();
 
         // Out-of-stock products are kept and reported with `availability.available = false`. Magento
         // would otherwise drop them at load but not from a count, so the two disagreed; the spec models
