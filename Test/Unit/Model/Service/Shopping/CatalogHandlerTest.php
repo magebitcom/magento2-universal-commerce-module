@@ -41,8 +41,7 @@ use Magento\Catalog\Model\ResourceModel\Product\Collection as ProductCollection;
 use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
 use Magento\CatalogInventory\Helper\Stock as StockHelper;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
-use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product\Collection as ChildCollection;
-use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product\CollectionFactory as ChildCollectionFactory;
+use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product as ConfigurableVariant;
 use Magento\Framework\DB\Adapter\AdapterInterface;
 use Magento\Framework\DB\Select;
 use Magento\Framework\EntityManager\EntityMetadataInterface;
@@ -518,12 +517,14 @@ class CatalogHandlerTest extends TestCase
     }
 
     /**
-     * @return ChildCollectionFactory
+     * @return ConfigurableVariant\CollectionFactory
      */
-    private function childCollectionFactory(): ChildCollectionFactory
+    private function childCollectionFactory(): ConfigurableVariant\CollectionFactory
     {
-        $factory = $this->createMock(ChildCollectionFactory::class);
-        $factory->method('create')->willReturnCallback(fn (): ChildCollection => $this->childCollection());
+        $factory = $this->createMock(ConfigurableVariant\CollectionFactory::class);
+        $factory->method('create')->willReturnCallback(
+            fn (): ConfigurableVariant\Collection => $this->childCollection()
+        );
 
         return $factory;
     }
@@ -531,13 +532,13 @@ class CatalogHandlerTest extends TestCase
     /**
      * A stand-in for the variant collection, which hands back every variant on the page at once.
      *
-     * @return ChildCollection
+     * @return ConfigurableVariant\Collection
      */
-    private function childCollection(): ChildCollection
+    private function childCollection(): ConfigurableVariant\Collection
     {
         $this->childCollections++;
 
-        $collection = $this->getMockBuilder(ChildCollection::class)
+        $collection = $this->getMockBuilder(ConfigurableVariant\Collection::class)
             ->disableOriginalConstructor()
             ->onlyMethods([
                 'setProductFilter',

@@ -42,8 +42,7 @@ use Magento\Catalog\Model\ResourceModel\Product\Collection as ProductCollection;
 use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
 use Magento\CatalogInventory\Helper\Stock as StockHelper;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
-use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product\Collection as ChildCollection;
-use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product\CollectionFactory as ChildCollectionFactory;
+use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product as ConfigurableVariant;
 use Magento\Framework\DB\Select;
 use Magento\Framework\DB\Sql\Expression;
 use Magento\Framework\EntityManager\MetadataPool;
@@ -98,7 +97,7 @@ class CatalogHandler implements CatalogHandlerInterface
      * @param ImageHelper $imageHelper
      * @param Visibility $visibility
      * @param InputCorrelationInterfaceFactory $correlationFactory
-     * @param ChildCollectionFactory $childCollectionFactory
+     * @param ConfigurableVariant\CollectionFactory $childCollectionFactory
      * @param StockHelper $stockHelper
      * @param MetadataPool $metadataPool
      */
@@ -116,7 +115,7 @@ class CatalogHandler implements CatalogHandlerInterface
         private readonly ImageHelper $imageHelper,
         private readonly Visibility $visibility,
         private readonly InputCorrelationInterfaceFactory $correlationFactory,
-        private readonly ChildCollectionFactory $childCollectionFactory,
+        private readonly ConfigurableVariant\CollectionFactory $childCollectionFactory,
         private readonly StockHelper $stockHelper,
         private readonly MetadataPool $metadataPool
     ) {
@@ -401,13 +400,13 @@ class CatalogHandler implements CatalogHandlerInterface
      * Every variant of every given product, in the shape Magento loads variants one parent at a time.
      *
      * @param MagentoProduct[] $parents
-     * @return ChildCollection
+     * @return ConfigurableVariant\Collection
      */
-    private function childCollection(array $parents): ChildCollection
+    private function childCollection(array $parents): ConfigurableVariant\Collection
     {
         $storeId = (int) $this->storeManager->getStore()->getId();
 
-        /** @var ChildCollection $collection */
+        /** @var ConfigurableVariant\Collection $collection */
         $collection = $this->childCollectionFactory->create();
 
         foreach ($parents as $parent) {
