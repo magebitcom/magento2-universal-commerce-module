@@ -170,10 +170,40 @@ class ProductToUcpProductTest extends TestCase
     }
 
     /**
-     * @param bool $isSalable
+     * The stock read with the page comes out of the database as text, so "0" has to mean out of
+     * stock rather than "some value is set".
+     *
+     * @param string $loaded
+     * @param bool $expected
+     * @dataProvider stockAsText
+     * @return void
+     */
+    public function testStockReadAsTextIsUnderstood(string $loaded, bool $expected): void
+    {
+        $availability = $this->converter()
+            ->convert($this->productCarryingStock($loaded), 'USD')
+            ->getVariants()[0]
+            ->getAvailability();
+
+        $this->assertSame($expected, $availability->getAvailable());
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: bool}>
+     */
+    public static function stockAsText(): array
+    {
+        return [
+            'in stock' => ['1', true],
+            'out of stock' => ['0', false],
+        ];
+    }
+
+    /**
+     * @param bool|string $isSalable As a boolean, or as the text the database hands back
      * @return MagentoProduct
      */
-    private function productCarryingStock(bool $isSalable): MagentoProduct
+    private function productCarryingStock(bool|string $isSalable): MagentoProduct
     {
         $product = $this->getMockBuilder(MagentoProduct::class)
             ->disableOriginalConstructor()

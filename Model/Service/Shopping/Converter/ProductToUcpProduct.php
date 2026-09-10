@@ -153,9 +153,10 @@ class ProductToUcpProduct
         // A product read as part of a page already carries its stock, read for the whole page at once.
         // Only one read on its own has to ask.
         $loaded = $product->getData('is_salable');
-        $available = $loaded === null
-            ? $this->stock->isSalable((string) $product->getSku())
-            : (bool) $loaded;
+        // Read from the database it arrives as text, so "0" has to mean out of stock.
+        $available = is_scalar($loaded)
+            ? (int) $loaded === 1
+            : $this->stock->isSalable((string) $product->getSku());
 
         /** @var VariantAvailabilityInterface $availability */
         $availability = $this->availabilityFactory->create();

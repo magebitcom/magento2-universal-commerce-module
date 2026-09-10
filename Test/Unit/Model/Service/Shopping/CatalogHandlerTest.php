@@ -39,9 +39,9 @@ use Magento\Catalog\Model\Product\Attribute\Source\Status;
 use Magento\Catalog\Model\Product\Visibility;
 use Magento\Catalog\Model\ResourceModel\Product\Collection as ProductCollection;
 use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
-use Magento\CatalogInventory\Helper\Stock as StockHelper;
+use Magento\CatalogInventory\Model\ResourceModel\Stock\Status as StockStatus;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
-use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product as ConfigurableVariant;
+use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable as ConfigurableResource;
 use Magento\Framework\DB\Adapter\AdapterInterface;
 use Magento\Framework\DB\Select;
 use Magento\Framework\EntityManager\EntityMetadataInterface;
@@ -104,9 +104,18 @@ class CatalogHandlerTest extends TestCase
      */
     private array $children = [];
 
-    private int $childCollections = 0;
+    /**
+     * Which variant belongs to which product, as the link table holds it.
+     *
+     * @var array<int, array{parent_id: int, product_id: int}>
+     */
+    private array $links = [];
 
-    private int $stockPrefetches = 0;
+    private int $stockJoins = 0;
+
+    private bool $stockFiltered = false;
+
+    private int $variantQueries = 0;
 
     private int $total = 0;
 
@@ -124,8 +133,10 @@ class CatalogHandlerTest extends TestCase
         $this->distinctAsked = false;
         $this->collections = 0;
         $this->children = [];
-        $this->childCollections = 0;
-        $this->stockPrefetches = 0;
+        $this->links = [];
+        $this->stockJoins = 0;
+        $this->stockFiltered = false;
+        $this->variantQueries = 0;
         $this->total = 0;
     }
 
@@ -310,11 +321,12 @@ class CatalogHandlerTest extends TestCase
     public function testEveryVariantOnThePageIsReadWithOneQuery(): void
     {
         $this->items = [$this->configurable('ucp-one', 11), $this->configurable('ucp-two', 22)];
-        $this->children = [$this->variant('ucp-one-s', 11), $this->variant('ucp-two-s', 22)];
+        $this->children = [$this->variant('ucp-one-s', 101), $this->variant('ucp-two-s', 201)];
+        $this->links = [$this->link(11, 101), $this->link(22, 201)];
 
         $this->handler()->search(null);
 
-        $this->assertSame(1, $this->childCollections);
+        $this->assertSame(1, $this->variantQueries);
     }
 
     /**
@@ -326,15 +338,52 @@ class CatalogHandlerTest extends TestCase
     {
         $this->items = [$this->configurable('ucp-one', 11), $this->configurable('ucp-two', 22)];
         $this->children = [
-            $this->variant('ucp-one-s', 11),
-            $this->variant('ucp-two-s', 22),
-            $this->variant('ucp-one-m', 11),
+            $this->variant('ucp-one-s', 101),
+            $this->variant('ucp-two-s', 201),
+            $this->variant('ucp-one-m', 102),
         ];
+        $this->links = [$this->link(11, 101), $this->link(22, 201), $this->link(11, 102)];
 
         $products = $this->handler()->search(null)->getProducts();
 
         $this->assertSame(['ucp-one-s', 'ucp-one-m'], $this->variantSkusOf($products[0]));
         $this->assertSame(['ucp-two-s'], $this->variantSkusOf($products[1]));
+    }
+
+    /**
+     * Magento lets one simple product be a variant of two configurable products. Reading the page
+     * through Magento's own variant collection threw on that, because the collection cannot hold the
+     * same product twice.
+     *
+     * @return void
+     */
+    public function testAVariantSharedByTwoProductsIsListedUnderBoth(): void
+    {
+        $this->items = [$this->configurable('ucp-one', 11), $this->configurable('ucp-two', 22)];
+        $this->children = [$this->variant('ucp-shared', 101)];
+        $this->links = [$this->link(11, 101), $this->link(22, 101)];
+
+        $products = $this->handler()->search(null)->getProducts();
+
+        $this->assertSame(['ucp-shared'], $this->variantSkusOf($products[0]));
+        $this->assertSame(['ucp-shared'], $this->variantSkusOf($products[1]));
+    }
+
+    /**
+     * A variant the query left out, because it is out of stock or needs options chosen, is not
+     * offered under its product either.
+     *
+     * @return void
+     */
+    public function testAVariantTheQueryLeftOutIsNotOffered(): void
+    {
+        $this->items = [$this->configurable('ucp-one', 11)];
+        $this->children = [$this->variant('ucp-one-s', 101)];
+        $this->links = [$this->link(11, 101), $this->link(11, 102)];
+
+        $products = $this->handler()->search(null)->getProducts();
+
+        $this->assertSame(['ucp-one-s'], $this->variantSkusOf($products[0]));
     }
 
     /**
@@ -345,7 +394,8 @@ class CatalogHandlerTest extends TestCase
     public function testAProductWithoutVariantsIsLeftWithItsOwn(): void
     {
         $this->items = [$this->configurable('ucp-one', 11), $this->product('ucp-plain')];
-        $this->children = [$this->variant('ucp-one-s', 11)];
+        $this->children = [$this->variant('ucp-one-s', 101)];
+        $this->links = [$this->link(11, 101)];
 
         $products = $this->handler()->search(null)->getProducts();
 
@@ -364,23 +414,23 @@ class CatalogHandlerTest extends TestCase
 
         $this->handler()->search(null);
 
-        $this->assertSame(0, $this->childCollections);
+        $this->assertSame(0, $this->variantQueries);
     }
 
     /**
-     * Stock is read for the whole page at once. Asking product by product cost two queries each.
+     * Stock rides along on the query that reads the page, rather than being asked for product by
+     * product, and out-of-stock products are kept rather than filtered away.
      *
      * @return void
      */
-    public function testStockIsReadForThePageRatherThanPerProduct(): void
+    public function testStockIsReadWithThePageRatherThanPerProduct(): void
     {
-        $this->items = [$this->configurable('ucp-one', 11), $this->product('ucp-two')];
-        $this->children = [$this->variant('ucp-one-s', 11), $this->variant('ucp-one-m', 11)];
+        $this->items = [$this->product('ucp-one'), $this->product('ucp-two')];
 
         $this->handler()->search(null);
 
-        // Once for the products on the page, once for their variants.
-        $this->assertSame(2, $this->stockPrefetches);
+        $this->assertSame(1, $this->stockJoins);
+        $this->assertFalse($this->stockFiltered);
     }
 
     /**
@@ -446,15 +496,28 @@ class CatalogHandlerTest extends TestCase
 
     /**
      * @param string $sku
-     * @param int $parentId The product this variant belongs to
+     * @param int $id
      * @return MagentoProduct
      */
-    private function variant(string $sku, int $parentId): MagentoProduct
+    private function variant(string $sku, int $id): MagentoProduct
     {
         $product = $this->product($sku);
-        $product->setData('parent_id', $parentId);
+        $product->setData('entity_id', $id);
+        $product->setData('id', $id);
 
         return $product;
+    }
+
+    /**
+     * One row of the link table.
+     *
+     * @param int $parentId
+     * @param int $variantId
+     * @return array{parent_id: int, product_id: int}
+     */
+    private function link(int $parentId, int $variantId): array
+    {
+        return ['parent_id' => $parentId, 'product_id' => $variantId];
     }
 
     /**
@@ -510,67 +573,58 @@ class CatalogHandlerTest extends TestCase
             $imageHelper,
             $visibility,
             $this->factoryFor(InputCorrelationInterfaceFactory::class, InputCorrelation::class),
-            $this->childCollectionFactory(),
-            $this->stockHelper(),
+            $this->configurableResource(),
+            $this->stockStatus(),
             $this->metadataPool()
         );
     }
 
     /**
-     * @return ConfigurableVariant\CollectionFactory
+     * A stand-in for the link table, which says which variant belongs to which product.
+     *
+     * @return ConfigurableResource
      */
-    private function childCollectionFactory(): ConfigurableVariant\CollectionFactory
+    private function configurableResource(): ConfigurableResource
     {
-        $factory = $this->createMock(ConfigurableVariant\CollectionFactory::class);
-        $factory->method('create')->willReturnCallback(
-            fn (): ConfigurableVariant\Collection => $this->childCollection()
+        $connection = $this->createMock(AdapterInterface::class);
+        $connection->method('select')->willReturnCallback(fn (): Select => $this->linkSelect());
+        $connection->method('fetchAll')->willReturnCallback(fn (): array => $this->links);
+
+        $resource = $this->createMock(ConfigurableResource::class);
+        $resource->method('getConnection')->willReturn($connection);
+        $resource->method('getMainTable')->willReturn('catalog_product_super_link');
+
+        return $resource;
+    }
+
+    /**
+     * @return Select
+     */
+    private function linkSelect(): Select
+    {
+        $select = $this->createMock(Select::class);
+        $select->method('from')->willReturnSelf();
+        $select->method('where')->willReturnSelf();
+
+        return $select;
+    }
+
+    /**
+     * @return StockStatus
+     */
+    private function stockStatus(): StockStatus
+    {
+        $status = $this->createMock(StockStatus::class);
+        $status->method('addStockDataToCollection')->willReturnCallback(
+            function (mixed $collection, mixed $filter) use (&$status): mixed {
+                $this->stockJoins++;
+                $this->stockFiltered = $this->stockFiltered || (bool) $filter;
+
+                return $collection;
+            }
         );
 
-        return $factory;
-    }
-
-    /**
-     * A stand-in for the variant collection, which hands back every variant on the page at once.
-     *
-     * @return ConfigurableVariant\Collection
-     */
-    private function childCollection(): ConfigurableVariant\Collection
-    {
-        $this->childCollections++;
-
-        $collection = $this->getMockBuilder(ConfigurableVariant\Collection::class)
-            ->disableOriginalConstructor()
-            ->onlyMethods([
-                'setProductFilter',
-                'addAttributeToSelect',
-                'addFilterByRequiredOptions',
-                'addStoreFilter',
-                'setStoreId',
-                'getItems',
-            ])
-            ->getMock();
-
-        $collection->method('setProductFilter')->willReturnSelf();
-        $collection->method('addAttributeToSelect')->willReturnSelf();
-        $collection->method('addFilterByRequiredOptions')->willReturnSelf();
-        $collection->method('addStoreFilter')->willReturnSelf();
-        $collection->method('setStoreId')->willReturnSelf();
-        $collection->method('getItems')->willReturnCallback(fn (): array => $this->children);
-
-        return $collection;
-    }
-
-    /**
-     * @return StockHelper
-     */
-    private function stockHelper(): StockHelper
-    {
-        $helper = $this->createMock(StockHelper::class);
-        $helper->method('addStockStatusToProducts')->willReturnCallback(function (): void {
-            $this->stockPrefetches++;
-        });
-
-        return $helper;
+        return $status;
     }
 
     /**
@@ -635,10 +689,28 @@ class CatalogHandlerTest extends TestCase
                 'getItems',
                 'addIdFilter',
                 'addUrlRewrite',
+                'addFilterByRequiredOptions',
+                'setStoreId',
             ])
             ->getMock();
 
         $collection->method('addUrlRewrite')->willReturnSelf();
+        $collection->method('setStoreId')->willReturnSelf();
+
+        // Only the variant query filters by required options, which is how this stand-in knows which
+        // of the two queries it is standing in for.
+        $isVariantQuery = false;
+        $collection->method('addFilterByRequiredOptions')->willReturnCallback(
+            function () use ($collection, &$isVariantQuery): ProductCollection {
+                $isVariantQuery = true;
+                $this->variantQueries++;
+
+                return $collection;
+            }
+        );
+        $rows = function () use (&$isVariantQuery): array {
+            return $isVariantQuery ? $this->children : $this->items;
+        };
 
         // Reading every id and paging in PHP is the thing being fixed, so it must not come back.
         $collection->expects($this->never())->method('getAllIds');
@@ -653,9 +725,9 @@ class CatalogHandlerTest extends TestCase
             }
         );
         $collection->method('getIterator')->willReturnCallback(
-            fn (): \ArrayIterator => new \ArrayIterator($this->items)
+            fn (): \ArrayIterator => new \ArrayIterator($rows())
         );
-        $collection->method('getItems')->willReturnCallback(fn (): array => $this->items);
+        $collection->method('getItems')->willReturnCallback($rows);
         $collection->method('addAttributeToFilter')->willReturnCallback(
             function (mixed $attribute, mixed $condition = null) use ($collection): ProductCollection {
                 $this->filters[] = [$attribute, $condition];

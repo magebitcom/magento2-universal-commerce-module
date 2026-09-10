@@ -40,9 +40,10 @@ use Magento\Catalog\Model\Product\Attribute\Source\Status;
 use Magento\Catalog\Model\Product\Visibility;
 use Magento\Catalog\Model\ResourceModel\Product\Collection as ProductCollection;
 use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
-use Magento\CatalogInventory\Helper\Stock as StockHelper;
+use Magento\CatalogInventory\Model\ResourceModel\Stock\Status as StockStatus;
 use Magento\ConfigurableProduct\Model\Product\Type\Configurable;
-use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable\Product as ConfigurableVariant;
+use Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable as ConfigurableResource;
+use Magento\Framework\DB\Adapter\AdapterInterface;
 use Magento\Framework\DB\Select;
 use Magento\Framework\DB\Sql\Expression;
 use Magento\Framework\EntityManager\MetadataPool;
@@ -97,8 +98,8 @@ class CatalogHandler implements CatalogHandlerInterface
      * @param ImageHelper $imageHelper
      * @param Visibility $visibility
      * @param InputCorrelationInterfaceFactory $correlationFactory
-     * @param ConfigurableVariant\CollectionFactory $childCollectionFactory
-     * @param StockHelper $stockHelper
+     * @param ConfigurableResource $configurableResource
+     * @param StockStatus $stockStatus
      * @param MetadataPool $metadataPool
      */
     public function __construct(
@@ -115,8 +116,8 @@ class CatalogHandler implements CatalogHandlerInterface
         private readonly ImageHelper $imageHelper,
         private readonly Visibility $visibility,
         private readonly InputCorrelationInterfaceFactory $correlationFactory,
-        private readonly ConfigurableVariant\CollectionFactory $childCollectionFactory,
-        private readonly StockHelper $stockHelper,
+        private readonly ConfigurableResource $configurableResource,
+        private readonly StockStatus $stockStatus,
         private readonly MetadataPool $metadataPool
     ) {
     }
@@ -156,7 +157,6 @@ class CatalogHandler implements CatalogHandlerInterface
         if ($ids !== []) {
             $collection->addIdFilter($ids);
             $collection->getSelect()->order('e.entity_id ' . Select::SQL_ASC);
-            $this->readStock($collection);
 
             foreach ($collection as $product) {
                 if ($product instanceof MagentoProduct) {
@@ -278,7 +278,6 @@ class CatalogHandler implements CatalogHandlerInterface
 
         $collection = $this->visibleProducts();
         $collection->addAttributeToFilter('sku', ['in' => $skus]);
-        $this->readStock($collection);
 
         $found = [];
 
@@ -334,57 +333,43 @@ class CatalogHandler implements CatalogHandlerInterface
     }
 
     /**
-     * Loads the variants of every configurable product on the page with one query.
+     * Loads the variants of every configurable product on the page: one query for which variant
+     * belongs to which product, and one for the variants themselves.
      *
      * @param MagentoProduct[] $products
      * @return array<int, MagentoProduct[]> Variants, keyed by the product they belong to
      */
     private function childrenFor(array $products): array
     {
-        $parents = array_filter(
-            $products,
-            static fn (MagentoProduct $product): bool => $product->getTypeId() === Configurable::TYPE_CODE
-        );
+        $linkField = $this->metadataPool->getMetadata(CatalogProductInterface::class)->getLinkField();
+        $parentIds = [];
 
-        if ($parents === []) {
+        foreach ($products as $product) {
+            if ($product->getTypeId() === Configurable::TYPE_CODE) {
+                $parentIds[] = $this->idOf($product->getData($linkField));
+            }
+        }
+
+        $links = $this->variantLinks(array_filter($parentIds));
+
+        if ($links === []) {
             return [];
         }
 
-        $collection = $this->childCollection($parents);
-        $this->readStock($collection);
-
+        $loaded = $this->loadVariants(array_unique(array_merge(...array_values($links))));
         $children = [];
 
-        foreach ($collection->getItems() as $child) {
-            $parentId = $this->idOf($child->getData('parent_id'));
-
-            if ($child instanceof MagentoProduct && $parentId !== 0) {
-                $children[$parentId][] = $child;
+        foreach ($links as $parentId => $variantIds) {
+            foreach ($variantIds as $variantId) {
+                // A variant the query left out, because it is out of stock or needs options chosen,
+                // is not offered here either.
+                if (isset($loaded[$variantId])) {
+                    $children[$parentId][] = $loaded[$variantId];
+                }
             }
         }
 
         return $children;
-    }
-
-    /**
-     * Reads the stock of everything on a page with one call. Asking product by product cost two
-     * queries each, so a page of products with variants ran into the hundreds.
-     *
-     * This belongs in the base module beside the rest of the stock reading, and moves there once that
-     * module has a release the modules can require.
-     *
-     * @param ProductCollection $products
-     * @return void
-     */
-    private function readStock(ProductCollection $products): void
-    {
-        if ($products->getItems() === []) {
-            return;
-        }
-
-        // Marked deprecated in favour of Multi Source Inventory, but it is the only batch call the
-        // stock API this module already uses has, and it gives the same answer as asking one at a time.
-        $this->stockHelper->addStockStatusToProducts($products);
     }
 
     /**
@@ -397,22 +382,47 @@ class CatalogHandler implements CatalogHandlerInterface
     }
 
     /**
-     * Every variant of every given product, in the shape Magento loads variants one parent at a time.
+     * Which variant belongs to which product. Read from the link table rather than through Magento's
+     * variant collection, because that collection cannot hold a variant shared by two products.
      *
-     * @param MagentoProduct[] $parents
-     * @return ConfigurableVariant\Collection
+     * @param int[] $parentIds
+     * @return array<int, int[]> Variant ids, keyed by the product they belong to
      */
-    private function childCollection(array $parents): ConfigurableVariant\Collection
+    private function variantLinks(array $parentIds): array
+    {
+        if ($parentIds === []) {
+            return [];
+        }
+
+        $connection = $this->configurableResource->getConnection();
+
+        if (!$connection instanceof AdapterInterface) {
+            return [];
+        }
+
+        $select = $connection->select()
+            ->from($this->configurableResource->getMainTable(), ['parent_id', 'product_id'])
+            ->where('parent_id IN (?)', $parentIds);
+
+        $links = [];
+
+        foreach ($connection->fetchAll($select) as $row) {
+            $links[$this->idOf($row['parent_id'])][] = $this->idOf($row['product_id']);
+        }
+
+        return $links;
+    }
+
+    /**
+     * @param int[] $variantIds
+     * @return array<int, MagentoProduct> Variants, keyed by their own id
+     */
+    private function loadVariants(array $variantIds): array
     {
         $storeId = (int) $this->storeManager->getStore()->getId();
 
-        /** @var ConfigurableVariant\Collection $collection */
-        $collection = $this->childCollectionFactory->create();
-
-        foreach ($parents as $parent) {
-            $collection->setProductFilter($parent);
-        }
-
+        $collection = $this->collectionFactory->create();
+        $collection->addIdFilter($variantIds);
         // Description is left out on purpose: a variant would repeat its parent's whole description,
         // which says nothing new and makes the answer much bigger.
         $collection->addAttributeToSelect(['name', 'price', 'special_price', 'status', 'visibility']);
@@ -420,7 +430,15 @@ class CatalogHandler implements CatalogHandlerInterface
         $collection->addStoreFilter($storeId);
         $collection->setStoreId($storeId);
 
-        return $collection;
+        $variants = [];
+
+        foreach ($collection->getItems() as $variant) {
+            if ($variant instanceof MagentoProduct) {
+                $variants[(int) $variant->getId()] = $variant;
+            }
+        }
+
+        return $variants;
     }
 
     /**
@@ -509,6 +527,10 @@ class CatalogHandler implements CatalogHandlerInterface
         // would otherwise drop them at load but not from a count, so the two disagreed; the spec models
         // out-of-stock explicitly, and an agent is better told a product exists than left guessing.
         $collection->setFlag(self::STOCK_FILTER_FLAG, true);
+
+        // Reads every product's stock as part of this same query. The flag above stops Magento adding
+        // the join a second time, and `false` keeps out-of-stock rows rather than filtering them.
+        $this->stockStatus->addStockDataToCollection($collection, false);
 
         return $collection;
     }
